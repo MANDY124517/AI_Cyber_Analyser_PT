@@ -31,9 +31,17 @@ class FindingsPipelineRunner:
         analysis = await self.engine.analyze_finding(finding)
         return EnrichedFinding(finding=finding, analysis=analysis)
 
-    async def run_batch(self, findings: Optional[List[SecurityFinding]] = None, max_concurrency: int = 3) -> BatchReport:
+    async def run_batch(self, findings: Optional[List[SecurityFinding]] = None, max_concurrency: Optional[int] = None) -> BatchReport:
         """Run full AI analysis pipeline over findings and compute aggregate report."""
         targets = findings or (self.cached_findings if self.cached_findings else self.load_findings())
+        
+        # Optimize local hardware: Ollama runs best with concurrency 1 to avoid VRAM overload / 500 errors
+        if max_concurrency is None:
+            if self.engine.provider == "ollama":
+                max_concurrency = int(os.getenv("OLLAMA_CONCURRENCY", "1"))
+            else:
+                max_concurrency = int(os.getenv("BATCH_CONCURRENCY", "3"))
+
         sem = asyncio.Semaphore(max_concurrency)
 
         async def _bounded_analyze(f: SecurityFinding) -> EnrichedFinding:
@@ -244,63 +252,75 @@ class FindingsPipelineRunner:
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>{report.report_title}</title>
     <style>
         :root {{
-            --bg: #090d16;
-            --surface: #111726;
-            --border: #1f2a44;
-            --text: #e2e8f0;
+            --bg: #090d14;
+            --surface: #111827;
+            --surface-card: #151f32;
+            --border: #1e2a3e;
+            --border-medium: #2a3b56;
+            --text: #f8fafc;
             --text-muted: #94a3b8;
-            --accent: #38bdf8;
-            --crit: #ef4444;
-            --high: #f97316;
-            --med: #eab308;
-            --low: #3b82f6;
+            --accent: #2563eb;
+            --crit-text: #fca5a5;
+            --crit-bg: rgba(220, 38, 38, 0.16);
+            --crit-border: rgba(239, 68, 68, 0.45);
+            --high-text: #fdba74;
+            --high-bg: rgba(234, 88, 12, 0.16);
+            --high-border: rgba(249, 115, 22, 0.45);
+            --med-text: #fde047;
+            --med-bg: rgba(202, 138, 4, 0.16);
+            --med-border: rgba(234, 179, 8, 0.45);
+            --low-text: #93c5fd;
+            --low-bg: rgba(37, 99, 235, 0.16);
+            --low-border: rgba(59, 130, 246, 0.45);
         }}
         body {{
             background: var(--bg);
             color: var(--text);
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
             margin: 0;
-            padding: 2rem;
+            padding: 24px;
+            font-size: 13px;
             line-height: 1.5;
         }}
         .container {{ max-width: 1200px; margin: 0 auto; }}
-        h1, h2, h3, h4 {{ color: #f8fafc; margin-top: 0; }}
-        .header {{ border-bottom: 1px solid var(--border); padding-bottom: 1.5rem; margin-bottom: 2rem; }}
-        .kpi-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 2rem; }}
-        .kpi-card {{ background: var(--surface); border: 1px solid var(--border); padding: 1.25rem; border-radius: 8px; }}
-        .kpi-val {{ font-size: 2rem; font-weight: bold; color: var(--accent); }}
-        .kpi-label {{ color: var(--text-muted); font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.05em; }}
-        .finding-card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }}
-        .border-critical {{ border-left: 4px solid var(--crit); }}
-        .border-high {{ border-left: 4px solid var(--high); }}
-        .border-medium {{ border-left: 4px solid var(--med); }}
-        .border-low {{ border-left: 4px solid var(--low); }}
-        .card-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; }}
-        .badge {{ padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.75rem; font-weight: bold; margin-right: 0.5rem; }}
-        .badge-critical {{ background: rgba(239, 68, 68, 0.2); color: var(--crit); border: 1px solid var(--crit); }}
-        .badge-high {{ background: rgba(249, 115, 22, 0.2); color: var(--high); border: 1px solid var(--high); }}
-        .badge-medium {{ background: rgba(234, 179, 8, 0.2); color: var(--med); border: 1px solid var(--med); }}
-        .badge-low {{ background: rgba(59, 130, 246, 0.2); color: var(--low); border: 1px solid var(--low); }}
-        .badge-cat {{ background: #1e293b; color: #cbd5e1; }}
-        .badge-id {{ background: #334155; color: #f8fafc; font-family: monospace; }}
-        .badge-cve {{ background: #831843; color: #f472b6; }}
-        .finding-title {{ font-size: 1.25rem; margin-bottom: 0.5rem; }}
-        .finding-meta {{ display: flex; gap: 1.5rem; color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1rem; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }}
-        .exec-card {{ background: rgba(56, 189, 248, 0.08); border-left: 3px solid var(--accent); padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 4px; }}
-        .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1rem; }}
-        .remediation-section {{ background: rgba(15, 23, 42, 0.6); padding: 1rem; border-radius: 6px; border: 1px solid var(--border); }}
-        .code-box {{ background: #020617; border: 1px solid #1e293b; border-radius: 4px; padding: 0.75rem; margin: 0.75rem 0; font-family: monospace; font-size: 0.85rem; overflow-x: auto; }}
-        .code-title {{ color: var(--accent); font-size: 0.75rem; text-transform: uppercase; margin-bottom: 0.25rem; }}
+        h1, h2, h3, h4 {{ color: #ffffff; margin-top: 0; font-weight: 700; }}
+        .header {{ border-bottom: 1px solid var(--border); padding-bottom: 16px; margin-bottom: 20px; }}
+        .kpi-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }}
+        .kpi-card {{ background: var(--surface); border: 1px solid var(--border); padding: 14px 16px; border-radius: 4px; }}
+        .kpi-val {{ font-size: 22px; font-weight: 700; color: #ffffff; font-family: monospace; }}
+        .kpi-label {{ color: var(--text-muted); font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }}
+        .finding-card {{ background: var(--surface); border: 1px solid var(--border); border-radius: 4px; padding: 16px; margin-bottom: 16px; }}
+        .card-header {{ display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }}
+        .badge {{ padding: 2px 6px; border-radius: 2px; font-size: 10px; font-weight: 700; text-transform: uppercase; font-family: monospace; margin-right: 6px; }}
+        .badge-critical {{ background: var(--crit-bg); color: var(--crit-text); border: 1px solid var(--crit-border); }}
+        .badge-high {{ background: var(--high-bg); color: var(--high-text); border: 1px solid var(--high-border); }}
+        .badge-medium {{ background: var(--med-bg); color: var(--med-text); border: 1px solid var(--med-border); }}
+        .badge-low {{ background: var(--low-bg); color: var(--low-text); border: 1px solid var(--low-border); }}
+        .badge-cat {{ background: #1e293b; color: #94a3b8; border: 1px solid #334155; }}
+        .badge-id {{ background: #0c121d; color: #f8fafc; border: 1px solid var(--border); font-family: monospace; }}
+        .badge-cve {{ background: #2a1215; color: #fca5a5; border: 1px solid #5c1d24; }}
+        .conf-badge {{ font-size: 11px; color: var(--text-muted); font-family: monospace; }}
+        .finding-title {{ font-size: 14px; margin-bottom: 6px; }}
+        .finding-meta {{ display: flex; gap: 16px; color: var(--text-muted); font-size: 11px; margin-bottom: 12px; border-bottom: 1px solid var(--border); padding-bottom: 8px; }}
+        .finding-meta strong {{ color: var(--text); }}
+        .exec-card {{ background: var(--surface-card); border: 1px solid var(--border-medium); padding: 10px 14px; margin-bottom: 12px; border-radius: 4px; font-size: 12px; }}
+        .grid-2 {{ display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-bottom: 12px; }}
+        .grid-2 p {{ margin: 4px 0 10px 0; font-size: 12px; color: #cbd5e1; }}
+        .remediation-section {{ background: var(--surface-card); padding: 12px 14px; border-radius: 4px; border: 1px solid var(--border); font-size: 12px; }}
+        .remediation-section p {{ margin: 4px 0 8px 0; color: #cbd5e1; }}
+        .code-box {{ background: #070a10; border: 1px solid var(--border-medium); border-radius: 4px; padding: 10px; margin: 8px 0; font-family: monospace; font-size: 11px; overflow-x: auto; color: #93c5fd; }}
+        .code-title {{ color: var(--text-muted); font-size: 10px; text-transform: uppercase; margin-bottom: 4px; }}
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🛡️ {report.report_title}</h1>
-            <p style="color: var(--text-muted)">Generated: {report.generated_at}</p>
+            <h1>{report.report_title}</h1>
+            <p style="color: var(--text-muted); font-size: 12px;">Generated: {report.generated_at} &bull; Security Operations Report</p>
         </div>
         
         <div class="kpi-grid">
@@ -309,7 +329,7 @@ class FindingsPipelineRunner:
                 <div class="kpi-label">Total Findings</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-val" style="color: var(--crit);">{m.critical_or_high_count}</div>
+                <div class="kpi-val">{m.critical_or_high_count}</div>
                 <div class="kpi-label">Critical & High</div>
             </div>
             <div class="kpi-card">
@@ -317,12 +337,12 @@ class FindingsPipelineRunner:
                 <div class="kpi-label">Average Confidence</div>
             </div>
             <div class="kpi-card">
-                <div class="kpi-val" style="color: #4ade80;">{m.analyzed_findings}</div>
+                <div class="kpi-val">{m.analyzed_findings}</div>
                 <div class="kpi-label">AI Analyzed</div>
             </div>
         </div>
 
-        <h2>Security Findings Matrix</h2>
+        <h2 style="font-size: 16px; margin-bottom: 14px;">Security Findings Matrix</h2>
         {cards_html}
     </div>
 </body>

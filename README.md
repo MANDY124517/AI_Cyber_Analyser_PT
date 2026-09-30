@@ -5,7 +5,7 @@
 
 > [!NOTE]
 > **Prototype Demonstration & Production Blueprint**:  
-> This repository is a functional demonstration and architectural proof-of-concept. For the complete specification detailing the production AI models, Multi-Agent architecture, training pipelines, and the **Enterprise Security GraphRAG system**, see [DEMO_VS_PRODUCTION_SYSTEM_ARCHITECTURE.md](file:///c:/Security/DEMO_VS_PRODUCTION_SYSTEM_ARCHITECTURE.md).
+> This repository is a functional demonstration and architectural proof-of-concept. 
 
 ---
 
@@ -91,25 +91,15 @@ Every finding processed through the pipeline is guaranteed to produce the follow
 
 ---
 
-## 4. Benchmark Dataset Coverage (`data/findings.json`)
+## 4. Multi-Source Finding Ingestion & Schema Support
 
-To prove adaptability across varied enterprise attack surfaces, the prototype includes 15 sanitized real-world scenarios:
+CyberTriage AI ingests vulnerability telemetry from automated scanners, CI/CD pipelines, and manual security reviews:
 
-1. **`SEC-001` (CVE / RCE)**: `CVE-2021-44228` Log4Shell JNDI injection via User-Agent.
-2. **`SEC-002` (Web / XSS)**: Stored Cross-Site Scripting in User Profile Bio with CSP bypass.
-3. **`SEC-003` (API / BOLA / IDOR)**: Broken Object Level Authorization on Invoices API leaking cross-tenant data.
-4. **`SEC-004` (Cloud Security / CSPM)**: Publicly accessible Cloud Storage bucket leaking 418MB customer PII CSV dump.
-5. **`SEC-005` (Exposed Services)**: Unauthenticated Redis server on `0.0.0.0:6379` exposing 1.4M session tokens.
-6. **`SEC-006` (Crypto / SSL)**: Payment Gateway using deprecated TLS 1.0/1.1 & Sweet32 3DES ciphers (PCI-DSS 4.0 failure).
-7. **`SEC-007` (Database / SQLi)**: Blind Time-Based SQL Injection on Product Search endpoint (`pg_sleep(10)`).
-8. **`SEC-008` (Secrets Leak)**: Hardcoded production Stripe Secret Key & AWS IAM credentials in React JS chunk.
-9. **`SEC-009` (Network / SSRF)**: Webhook service querying AWS IMDS `169.254.169.254` to steal STS role credentials.
-10. **`SEC-010` (Auth Bypass)**: API Gateway accepting JWT with `alg: "none"` allowing arbitrary admin privilege forgery.
-11. **`SEC-011` (Path Traversal)**: Arbitrary local file inclusion (`../../../../etc/passwd`) via report download parameter.
-12. **`SEC-012` (CORS Misconfiguration)**: Dynamic origin reflection with `Access-Control-Allow-Credentials: true`.
-13. **`SEC-013` (Rate Limiting / Abuse)**: Unrestricted login endpoint enabling high-speed credential stuffing.
-14. **`SEC-014` (Insecure Deserialization)**: Python `pickle.loads()` payload in session cookie leading to remote shell.
-15. **`SEC-015` (Kubernetes Security)**: Unauthenticated Kubelet API on port `10250` allowing pod container command execution.
+- **Supported Finding Categories**: CVEs (SCA/Trivy/Snyk), Web Vulnerabilities (XSS, SQLi, CSRF, SSRF), API Security (BOLA/IDOR, Broken Object Level Auth), Cloud & Container Security (CSPM, K8s misconfigurations), Cryptographic & SSL/TLS issues, and Secret Leaks.
+- **Ingestion Methods**:
+  1. **Direct JSON Ingestion**: Batch import via `POST /api/findings/import` or the Web Console "Import JSON" modal.
+  2. **Ad-Hoc Custom Finding Triage**: Analyze arbitrary vulnerability telemetry on-the-fly via `POST /api/analyze-custom` or the Web Console "Custom Finding" interface.
+  3. **Standardized Pydantic Schema**: All findings are strongly typed and validated against `SecurityFinding` models with automated ID generation and timestamping.
 
 ---
 

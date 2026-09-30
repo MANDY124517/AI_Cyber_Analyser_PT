@@ -36,9 +36,9 @@ from pipeline.runner import FindingsPipelineRunner
 from pipeline.ai_engine import CybersecurityAIEngine
 
 app = FastAPI(
-    title="Cybersecurity AI Findings Analysis API",
+    title="CyberTriage AI Security Finding Analysis API",
     description="Automated AI triage, root-cause explanation, and structured remediation engine for security findings",
-    version="1.0.0"
+    version="1.4.0"
 )
 
 # Request logging middleware
@@ -59,22 +59,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-DATA_PATH = os.path.join(PROJECT_ROOT, "data", "findings.json")
 STATIC_PATH = os.path.join(PROJECT_ROOT, "static")
 
 # Global runner instance
-runner = FindingsPipelineRunner(data_path=DATA_PATH)
+runner = FindingsPipelineRunner()
 
-# In-memory store of enriched findings for interactive updates
+# In-memory store of enriched findings for interactive updates (starts completely clean)
 state: Dict[str, EnrichedFinding] = {}
-
-def initialize_state():
-    findings = runner.load_findings()
-    for f in findings:
-        if f.id not in state:
-            state[f.id] = EnrichedFinding(finding=f, analysis=None)
-
-initialize_state()
 
 class CustomFindingRequest(BaseModel):
     title: str
@@ -101,6 +92,53 @@ async def get_finding(finding_id: str):
         raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
     return state[fid]
 
+@app.post("/api/findings/import", response_model=Dict[str, Any])
+async def import_findings(items: List[Dict[str, Any]]):
+    """Import an array of raw findings or scanner output into the active session."""
+    imported_count = 0
+    errors = []
+    import uuid
+
+    for idx, item in enumerate(items):
+        try:
+            # Auto-assign ID if missing
+            if not item.get("id"):
+                item["id"] = f"INGEST-{uuid.uuid4().hex[:6].upper()}"
+            if not item.get("timestamp"):
+                from datetime import datetime, timezone
+                item["timestamp"] = datetime.now(timezone.utc).isoformat()
+            
+            finding = SecurityFinding.model_validate(item)
+            state[finding.id] = EnrichedFinding(finding=finding, analysis=None)
+            imported_count += 1
+        except Exception as e:
+            errors.append(f"Item #{idx}: {str(e)}")
+
+    logger.info(f"Imported {imported_count} findings via API.")
+    return {
+        "status": "success",
+        "imported": imported_count,
+        "total_active": len(state),
+        "errors": errors
+    }
+
+@app.delete("/api/findings", response_model=Dict[str, Any])
+async def clear_all_findings():
+    """Clear all active findings from memory."""
+    count = len(state)
+    state.clear()
+    logger.info(f"Cleared all {count} findings from memory.")
+    return {"status": "success", "cleared": count}
+
+@app.delete("/api/findings/{finding_id}", response_model=Dict[str, Any])
+async def delete_finding(finding_id: str):
+    """Delete a specific finding by ID."""
+    fid = finding_id.upper()
+    if fid in state:
+        del state[fid]
+        return {"status": "success", "deleted": fid}
+    raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
+
 @app.post("/api/analyze/{finding_id}", response_model=EnrichedFinding)
 async def analyze_finding(finding_id: str):
     """Run AI analysis on a specific finding."""
@@ -115,6 +153,8 @@ async def analyze_finding(finding_id: str):
 @app.post("/api/analyze-all", response_model=BatchReport)
 async def analyze_all():
     """Batch analyze all findings in the dataset."""
+    if not state:
+        return runner.compile_report([])
     findings = [item.finding for item in state.values()]
     report = await runner.run_batch(findings)
     for enriched in report.findings:
@@ -204,4 +244,6 @@ if os.path.exists(STATIC_PATH):
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("api.server:app", host="127.0.0.1", port=8000, reload=True, app_dir=PROJECT_ROOT)
+    port = int(os.getenv("PORT", "8000"))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("api.server:app", host=host, port=port, reload=False, app_dir=PROJECT_ROOT)

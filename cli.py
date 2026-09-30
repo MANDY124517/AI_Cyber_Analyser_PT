@@ -39,7 +39,7 @@ def cmd_list(args):
     runner = FindingsPipelineRunner(data_path=args.data)
     findings = runner.load_findings()
 
-    table = Table(title="🛡️ Cybersecurity Mock Findings Dataset", show_lines=True)
+    table = Table(title="🛡️ Cybersecurity Ingested Findings", show_lines=True)
     table.add_column("ID", style="bold cyan", width=10)
     table.add_column("Title", style="white", min_width=30)
     table.add_column("Category", style="magenta", width=18)

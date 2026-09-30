@@ -1,4 +1,5 @@
 $kind: http-request
+description: ""
 url: "{{baseUrl}}/api/findings/{{finding_id}}"
 method: GET
 scripts:

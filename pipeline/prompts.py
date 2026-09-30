@@ -37,6 +37,7 @@ Guidelines for Generation:
 3. Ensure the Developer Explanation includes concrete programming guidance and architectural concepts.
 4. Ensure the Remediation includes a working code or configuration sample patch.
 5. Provide transparent confidence reasoning explaining whether proof of concept, live telemetry, or heuristic matching was used.
+6. Format strings properly: escape any internal double quotes with a backslash (\\") inside code snippets, and do not use unescaped raw newlines within JSON string values.
 """
 
 def format_finding_for_analysis(finding_dict: dict) -> str:

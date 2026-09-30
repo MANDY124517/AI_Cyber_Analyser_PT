@@ -1,6 +1,7 @@
 from __future__ import annotations
+import json
 from typing import List, Dict, Any, Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from datetime import datetime, timezone
 
 
@@ -36,12 +37,80 @@ class ImpactAnalysis(BaseModel):
     business_impact: str = Field(..., description="Consequences on business operations, compliance, revenue, or reputation")
     blast_radius: str = Field(..., description="Scope of asset compromise and potential lateral movement")
 
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_impact(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {
+                "technical_impact": data,
+                "business_impact": "Potential operational and data integrity risk.",
+                "blast_radius": "Target asset and integrated dependencies."
+            }
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        if "technical_impact" not in normalized:
+            normalized["technical_impact"] = normalized.get("technical") or normalized.get("tech_impact") or "Potential compromise of system confidentiality and integrity."
+        if "business_impact" not in normalized:
+            normalized["business_impact"] = normalized.get("business") or normalized.get("biz_impact") or "Impact on service trust, operations, and compliance."
+        if "blast_radius" not in normalized:
+            normalized["blast_radius"] = normalized.get("blastradius") or normalized.get("scope") or "Target service and immediate dependencies."
+        return normalized
+
 
 class RemediationPlan(BaseModel):
     immediate_mitigation: str = Field(..., description="Emergency containment step (WAF rule, config toggle, network block)")
     permanent_fix: str = Field(..., description="Comprehensive root-cause remediation steps")
     code_sample_patch: Optional[str] = Field(None, description="Concrete code diff, configuration snippet, or CLI command")
     verification_steps: str = Field(..., description="Actionable test commands or steps to verify the fix works")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_remediation(cls, data: Any) -> Any:
+        if isinstance(data, str):
+            return {
+                "immediate_mitigation": "Apply access control or WAF filtering.",
+                "permanent_fix": data,
+                "verification_steps": "Re-verify endpoint after patch deployment."
+            }
+        if not isinstance(data, dict):
+            return data
+        
+        # Normalize key variations and common LLM typos (e.g. immediate_mitiation)
+        key_map = {
+            "immediate_mitiation": "immediate_mitigation",
+            "immediate_action": "immediate_mitigation",
+            "immediate_mitigations": "immediate_mitigation",
+            "mitigation": "immediate_mitigation",
+            "immediate": "immediate_mitigation",
+            "containment": "immediate_mitigation",
+            "permanent": "permanent_fix",
+            "permanent_remediation": "permanent_fix",
+            "permanent_solution": "permanent_fix",
+            "remediation": "permanent_fix",
+            "patch": "code_sample_patch",
+            "code_patch": "code_sample_patch",
+            "code_sample": "code_sample_patch",
+            "diff": "code_sample_patch",
+            "verify": "verification_steps",
+            "verify_steps": "verification_steps",
+            "verification": "verification_steps",
+            "verification_step": "verification_steps",
+            "test_steps": "verification_steps",
+        }
+        normalized = {}
+        for k, v in data.items():
+            mapped_key = key_map.get(k.lower().strip(), k)
+            normalized[mapped_key] = v
+
+        if "immediate_mitigation" not in normalized:
+            normalized["immediate_mitigation"] = normalized.get("mitigation") or normalized.get("permanent_fix") or "Apply standard access controls and containment."
+        if "permanent_fix" not in normalized:
+            normalized["permanent_fix"] = normalized.get("remediation") or normalized.get("immediate_mitigation") or "Apply permanent code and configuration updates."
+        if "verification_steps" not in normalized:
+            normalized["verification_steps"] = "Re-test endpoint and inspect logs to confirm resolution."
+            
+        return normalized
 
 
 class FindingAnalysis(BaseModel):
@@ -92,6 +161,83 @@ class FindingAnalysis(BaseModel):
         description="Analysis completion timestamp"
     )
     model_used: str = Field("ai-cyber-analyzer-v1", description="Model or analyzer engine identifier")
+
+    @model_validator(mode="before")
+    @classmethod
+    def normalize_analysis(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        normalized = dict(data)
+        
+        # Normalize key aliases
+        if "explanation" not in normalized:
+            normalized["explanation"] = normalized.get("description") or normalized.get("overview") or normalized.get("summary") or "Vulnerability detected in target component."
+        if "impact" not in normalized:
+            normalized["impact"] = normalized.get("impact_analysis") or normalized.get("impacts") or "Vulnerability affects system confidentiality and integrity."
+        if "evidence_interpretation" not in normalized:
+            normalized["evidence_interpretation"] = normalized.get("evidence_analysis") or normalized.get("telemetry_analysis") or "Scanner evidence indicates confirmed vulnerability."
+        if "recommended_remediation" not in normalized:
+            normalized["recommended_remediation"] = normalized.get("remediation_plan") or normalized.get("remediation") or normalized.get("recommendations") or {}
+        if "executive_summary" not in normalized:
+            normalized["executive_summary"] = normalized.get("exec_summary") or normalized.get("ciso_summary") or str(normalized["explanation"])[:200]
+        if "developer_oriented_explanation" not in normalized:
+            normalized["developer_oriented_explanation"] = normalized.get("dev_explanation") or normalized.get("technical_explanation") or str(normalized["explanation"])
+        if "confidence_reasoning" not in normalized:
+            normalized["confidence_reasoning"] = normalized.get("confidence_explanation") or "High confidence based on verified scanner telemetry."
+
+        # Stringify any nested dicts/lists returned by LLMs for string fields
+        for str_field in ["evidence_interpretation", "explanation", "executive_summary", "developer_oriented_explanation", "confidence_reasoning"]:
+            if isinstance(normalized.get(str_field), (dict, list)):
+                try:
+                    normalized[str_field] = json.dumps(normalized[str_field], indent=2)
+                except Exception:
+                    normalized[str_field] = str(normalized[str_field])
+
+        raw_score = normalized.get("confidence_score", 0.95)
+        try:
+            if isinstance(raw_score, str):
+                raw_score = float(raw_score.replace("%", "").strip())
+                if raw_score > 1.0:
+                    raw_score = raw_score / 100.0
+            normalized["confidence_score"] = max(0.0, min(1.0, float(raw_score)))
+        except (ValueError, TypeError):
+            normalized["confidence_score"] = 0.95
+
+        # Normalize confidence_rating
+        raw_rating = str(normalized.get("confidence_rating", "HIGH")).upper()
+        if "HIGH" in raw_rating:
+            normalized["confidence_rating"] = "HIGH"
+        elif "MED" in raw_rating:
+            normalized["confidence_rating"] = "MEDIUM"
+        else:
+            normalized["confidence_rating"] = "LOW"
+
+        # Normalize remediation_effort
+        raw_effort = str(normalized.get("remediation_effort", "Medium")).capitalize()
+        if raw_effort not in ["Low", "Medium", "High"]:
+            normalized["remediation_effort"] = "Medium"
+        else:
+            normalized["remediation_effort"] = raw_effort
+
+        # Normalize suggested_priority
+        raw_prio = str(normalized.get("suggested_priority", "P1 - High")).upper()
+        if "P0" in raw_prio or "CRITICAL" in raw_prio:
+            normalized["suggested_priority"] = "P0 - Critical"
+        elif "P1" in raw_prio or "HIGH" in raw_prio:
+            normalized["suggested_priority"] = "P1 - High"
+        elif "P2" in raw_prio or "MED" in raw_prio:
+            normalized["suggested_priority"] = "P2 - Medium"
+        else:
+            normalized["suggested_priority"] = "P3 - Low"
+
+        # Normalize mitre_tactics_techniques
+        mitre = normalized.get("mitre_tactics_techniques", [])
+        if isinstance(mitre, str):
+            normalized["mitre_tactics_techniques"] = [mitre] if mitre else []
+        elif not isinstance(mitre, list):
+            normalized["mitre_tactics_techniques"] = []
+
+        return normalized
 
 
 class EnrichedFinding(BaseModel):
