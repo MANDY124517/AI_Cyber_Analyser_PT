@@ -15,6 +15,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # Install Ollama binary
 RUN curl -fsSL https://ollama.com/install.sh | sh
 
+# Pre-download and bake the LLM model (hermes3:3b) directly into the image layer
+RUN ollama serve > /dev/null 2>&1 & \
+    PID=$! && \
+    while ! curl -s http://127.0.0.1:11434/api/tags > /dev/null 2>&1; do sleep 1; done && \
+    ollama pull hermes3:3b && \
+    kill $PID
+
 WORKDIR /app
 
 # Install Python requirements
