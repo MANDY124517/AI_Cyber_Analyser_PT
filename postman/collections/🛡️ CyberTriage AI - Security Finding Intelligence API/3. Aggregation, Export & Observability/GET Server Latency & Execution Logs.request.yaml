@@ -1,0 +1,6 @@
+$kind: http-request
+url: "{{baseUrl}}/api/logs?limit=50"
+method: GET
+queryParams:
+  limit: "50"
+order: 4000

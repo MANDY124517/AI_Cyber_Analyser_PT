@@ -1,0 +1,13 @@
+$kind: http-request
+url: "{{baseUrl}}/api/findings"
+method: GET
+scripts:
+  - type: afterResponse
+    code: |-
+      pm.test("Status code is 200 OK", () => pm.response.to.have.status(200));
+      const list = pm.response.json();
+      pm.test("Returns array of findings", () => {
+          pm.expect(list).to.be.an('array').and.not.empty;
+      });
+    language: text/javascript
+order: 1000

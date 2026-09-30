@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CyberTriage AI | Security Finding Analysis Platform</title>
+    <meta name="description"
+        content="Structured AI triage, root-cause explanation, and automated remediation engine for cybersecurity findings.">
+    <!-- Google Fonts: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+</head>
+
+<body>
+    <div class="app-layout">
+        <!-- TOP NAV HEADER -->
+        <header class="top-nav">
+            <div class="nav-brand">
+                <div class="brand-logo">
+                    <span class="shield-icon">🛡️</span>
+                </div>
+                <div class="brand-text">
+                    <h1 class="brand-title">No_Name <span class="accent-text">AI</span></h1>
+                    <span class="brand-subtitle">Automated Finding Intelligence & Remediation Engine</span>
+                </div>
+            </div>
+
+            <div class="nav-status-badge">
+                <span class="status-pulse"></span>
+                <span class="status-label" id="engine-status">AI Engine: Standby / Ready</span>
+            </div>
+
+            <div class="nav-actions">
+                <button class="btn btn-secondary" id="btn-open-sandbox">
+                    <span class="btn-icon">➕</span> Test Custom Finding
+                </button>
+                <button class="btn btn-secondary" id="btn-export-menu">
+                    <span class="btn-icon">📥</span> Export Report
+                </button>
+                <button class="btn btn-primary" id="btn-batch-analyze">
+                    <span class="btn-icon">⚡</span> Analyze All Findings
+                </button>
+            </div>
+        </header>
+
+        <!-- KPI METRICS BAR -->
+        <section class="kpi-container">
+            <div class="kpi-card" id="kpi-total">
+                <div class="kpi-icon-wrapper kpi-blue">📂</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="val-total-findings">--</div>
+                    <div class="kpi-title">Total Findings</div>
+                </div>
+            </div>
+            <div class="kpi-card" id="kpi-crit">
+                <div class="kpi-icon-wrapper kpi-red">🔥</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="val-crit-high">--</div>
+                    <div class="kpi-title">Critical & High</div>
+                </div>
+            </div>
+            <div class="kpi-card" id="kpi-analyzed">
+                <div class="kpi-icon-wrapper kpi-green">🤖</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="val-analyzed-count">--</div>
+                    <div class="kpi-title">AI Analyzed</div>
+                </div>
+            </div>
+            <div class="kpi-card" id="kpi-conf">
+                <div class="kpi-icon-wrapper kpi-cyan">🎯</div>
+                <div class="kpi-content">
+                    <div class="kpi-value" id="val-avg-confidence">--%</div>
+                    <div class="kpi-title">Avg AI Confidence</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- MAIN WORKSPACE: SPLIT PANE -->
+        <main class="main-workspace">
+            <!-- LEFT PANEL: LIST & FILTERS -->
+            <section class="findings-sidebar">
+                <div class="sidebar-header">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="filter-search" placeholder="Search by CVE, asset, endpoint, keyword..."
+                            autocomplete="off">
+                    </div>
+
+                    <div class="filter-controls">
+                        <div class="severity-pills">
+                            <button class="sev-pill active" data-sev="ALL">ALL</button>
+                            <button class="sev-pill" data-sev="CRITICAL">CRIT</button>
+                            <button class="sev-pill" data-sev="HIGH">HIGH</button>
+                            <button class="sev-pill" data-sev="MEDIUM">MED</button>
+                            <button class="sev-pill" data-sev="LOW">LOW</button>
+                        </div>
+
+                        <div class="dropdown-filter-group">
+                            <select id="filter-category" class="custom-select">
+                                <option value="ALL">All Categories</option>
+                                <option value="CVE">CVE / Outdated Packages</option>
+                                <option value="XSS">Cross-Site Scripting (XSS)</option>
+                                <option value="IDOR/BOLA">IDOR / BOLA</option>
+                                <option value="Security Misconfiguration">Security Misconfiguration</option>
+                                <option value="Exposed Services">Exposed Services</option>
+                                <option value="SSL/TLS Issues">SSL / TLS Issues</option>
+                                <option value="SQL Injection">SQL Injection</option>
+                                <option value="Secret Leak">Secret Leaks</option>
+                                <option value="SSRF">SSRF</option>
+                                <option value="Broken Authentication">Broken Authentication</option>
+                                <option value="Path Traversal">Path Traversal</option>
+                                <option value="Insecure Deserialization">Insecure Deserialization</option>
+                            </select>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="findings-list-wrapper" id="findings-list">
+                    <!-- Populated dynamically via app.js -->
+                    <div class="loading-spinner-box">
+                        <div class="spinner"></div>
+                        <span>Loading security findings...</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- RIGHT PANEL: DEEP INSPECTOR & DUAL-AUDIENCE VIEWS -->
+            <section class="finding-inspector" id="finding-inspector">
+                <div class="inspector-placeholder" id="inspector-empty">
+                    <div class="placeholder-icon">🛡️</div>
+                    <h2>Select a Security Finding</h2>
+                    <p>Click on any finding from the list on the left to inspect raw telemetry, trigger AI reasoning,
+                        and view executive or developer-oriented remediation guidance.</p>
+                </div>
+
+                <div class="inspector-content" id="inspector-content" style="display: none;">
+                    <!-- INSPECTOR HEADER -->
+                    <div class="inspector-header">
+                        <div class="inspector-title-meta">
+                            <div class="inspector-badge-row">
+                                <span class="badge" id="insp-badge-sev">CRITICAL</span>
+                                <span class="badge badge-cat" id="insp-badge-cat">CVE</span>
+                                <span class="badge badge-id" id="insp-badge-id">SEC-001</span>
+                                <span class="badge badge-cve" id="insp-badge-cve"
+                                    style="display: none;">CVE-2021-44228</span>
+                                <span class="badge badge-cvss" id="insp-badge-cvss" style="display: none;">CVSS
+                                    10.0</span>
+                            </div>
+                            <h2 class="inspector-title" id="insp-title">Finding Title</h2>
+                            <div class="inspector-meta-row">
+                                <span><strong>Asset:</strong> <code id="insp-asset">auth-service-prod</code></span>
+                                <span><strong>Endpoint:</strong> <code
+                                        id="insp-endpoint">/api/v1/auth/login</code></span>
+                                <span><strong>Discovery Tool:</strong> <span id="insp-tool">Trivy</span></span>
+                            </div>
+                        </div>
+
+                        <div class="inspector-actions">
+                            <button class="btn btn-primary" id="btn-analyze-current">
+                                <span class="btn-icon">⚡</span> <span id="btn-analyze-text">Analyze with AI</span>
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- TAB NAVIGATION -->
+                    <nav class="inspector-tabs">
+                        <button class="tab-btn active" data-tab="tab-executive">
+                            👔 Executive View
+                        </button>
+                        <button class="tab-btn" data-tab="tab-developer">
+                            💻 Developer & Patch View
+                        </button>
+                        <button class="tab-btn" data-tab="tab-technical">
+                            🔬 Technical Deep-Dive
+                        </button>
+                        <button class="tab-btn" data-tab="tab-evidence">
+                            📡 Raw Evidence & Telemetry
+                        </button>
+                        <button class="tab-btn" data-tab="tab-confidence">
+                            🎯 Confidence & Taxonomy
+                        </button>
+                    </nav>
+
+                    <!-- TAB CONTENTS -->
+                    <div class="tab-body">
+                        <!-- 1. EXECUTIVE VIEW -->
+                        <div class="tab-pane active" id="tab-executive">
+                            <div class="exec-callout-card">
+                                <div class="exec-card-title">Executive Summary</div>
+                                <p class="exec-card-text" id="insp-exec-summary">Run AI analysis to generate executive
+                                    overview.</p>
+                            </div>
+
+                            <div class="card-grid-2">
+                                <div class="info-card">
+                                    <div class="info-card-header">
+                                        <span class="info-card-icon">💼</span> Business Impact
+                                    </div>
+                                    <p id="insp-biz-impact">Pending analysis...</p>
+                                </div>
+                                <div class="info-card">
+                                    <div class="info-card-header">
+                                        <span class="info-card-icon">🌐</span> Blast Radius & Exposure
+                                    </div>
+                                    <p id="insp-blast-radius">Pending analysis...</p>
+                                </div>
+                            </div>
+
+                            <div class="triage-metrics-row">
+                                <div class="triage-pill">
+                                    <span class="triage-label">Suggested Priority</span>
+                                    <span class="triage-val priority-p0" id="insp-priority">P0 - Critical</span>
+                                </div>
+                                <div class="triage-pill">
+                                    <span class="triage-label">Remediation Effort</span>
+                                    <span class="triage-val" id="insp-effort">Low</span>
+                                </div>
+                                <div class="triage-pill">
+                                    <span class="triage-label">AI Confidence</span>
+                                    <span class="triage-val conf-high" id="insp-confidence-pill">100% (HIGH)</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. DEVELOPER & PATCH VIEW -->
+                        <div class="tab-pane" id="tab-developer">
+                            <div class="section-block">
+                                <h3>Developer Technical Context</h3>
+                                <p id="insp-dev-explanation">Pending analysis...</p>
+                            </div>
+
+                            <div class="section-block">
+                                <h3>Actionable Remediation Roadmap</h3>
+                                <div class="remediation-step step-immediate">
+                                    <strong>🚨 Immediate Containment:</strong>
+                                    <p id="insp-rem-immediate">Pending analysis...</p>
+                                </div>
+                                <div class="remediation-step step-permanent">
+                                    <strong>🛡️ Permanent Architectural Fix:</strong>
+                                    <p id="insp-rem-permanent">Pending analysis...</p>
+                                </div>
+                            </div>
+
+                            <div class="section-block" id="patch-code-block-container">
+                                <div class="code-header">
+                                    <span>Code / Configuration Patch</span>
+                                    <button class="btn btn-xs" id="btn-copy-patch">📋 Copy Patch</button>
+                                </div>
+                                <pre
+                                    class="code-editor"><code id="insp-code-patch"># Code patch will be displayed here</code></pre>
+                            </div>
+
+                            <div class="section-block">
+                                <h3>Verification & Testing Steps</h3>
+                                <div class="verification-box" id="insp-rem-verification">Pending analysis...</div>
+                            </div>
+                        </div>
+
+                        <!-- 3. TECHNICAL DEEP-DIVE -->
+                        <div class="tab-pane" id="tab-technical">
+                            <div class="section-block">
+                                <h3>Vulnerability Explanation</h3>
+                                <p id="insp-explanation">Pending analysis...</p>
+                            </div>
+
+                            <div class="section-block">
+                                <h3>Technical Impact Breakdown</h3>
+                                <p id="insp-tech-impact">Pending analysis...</p>
+                            </div>
+
+                            <div class="section-block">
+                                <h3>Evidence Interpretation</h3>
+                                <div class="interpretation-card" id="insp-evidence-interpretation">Pending analysis...
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. RAW EVIDENCE & TELEMETRY -->
+                        <div class="tab-pane" id="tab-evidence">
+                            <div class="section-block">
+                                <h3>Raw Finding Telemetry & Scanner Evidence</h3>
+                                <pre class="code-editor json-viewer"><code id="insp-raw-evidence">{}</code></pre>
+                            </div>
+                        </div>
+
+                        <!-- 5. CONFIDENCE & TAXONOMY -->
+                        <div class="tab-pane" id="tab-confidence">
+                            <div class="section-block">
+                                <h3>AI Confidence Reasoning</h3>
+                                <div class="confidence-meter-box">
+                                    <div class="confidence-bar-bg">
+                                        <div class="confidence-bar-fill" id="insp-conf-bar" style="width: 0%;"></div>
+                                    </div>
+                                    <div class="confidence-score-text" id="insp-conf-score-text">0% Confidence Score
+                                    </div>
+                                </div>
+                                <div class="reasoning-text-box" id="insp-conf-reasoning">
+                                    Pending analysis...
+                                </div>
+                            </div>
+
+                            <div class="section-block">
+                                <h3>Standardized Security Taxonomy</h3>
+                                <div class="taxonomy-grid">
+                                    <div class="taxonomy-card">
+                                        <div class="taxonomy-title">OWASP Top 10 Category</div>
+                                        <div class="taxonomy-val" id="insp-owasp">A01:2021</div>
+                                    </div>
+                                    <div class="taxonomy-card">
+                                        <div class="taxonomy-title">MITRE ATT&CK Techniques</div>
+                                        <div class="taxonomy-tags" id="insp-mitre">
+                                            <span class="tag">T1190</span>
+                                        </div>
+                                    </div>
+                                    <div class="taxonomy-card">
+                                        <div class="taxonomy-title">Analysis Engine Model</div>
+                                        <div class="taxonomy-val" id="insp-model">ai-cyber-analyzer-v1</div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- CUSTOM FINDING SANDBOX MODAL -->
+        <div class="modal-overlay" id="sandbox-modal" style="display: none;">
+            <div class="modal-card">
+                <div class="modal-header">
+                    <div class="modal-title">
+                        <span class="modal-icon">🧪</span>
+                        <h3>Custom Finding Sandbox</h3>
+                    </div>
+                    <button class="modal-close" id="btn-close-sandbox">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">Inject an ad-hoc custom security finding or paste raw scanner output to test
+                        the AI pipeline in real time.</p>
+
+                    <form id="custom-finding-form">
+                        <div class="form-row">
+                            <div class="form-group flex-2">
+                                <label for="cust-title">Finding Title *</label>
+                                <input type="text" id="cust-title"
+                                    placeholder="e.g. Broken Authentication in OAuth Callback" required>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="cust-severity">Severity *</label>
+                                <select id="cust-severity" class="custom-select">
+                                    <option value="CRITICAL">CRITICAL</option>
+                                    <option value="HIGH" selected>HIGH</option>
+                                    <option value="MEDIUM">MEDIUM</option>
+                                    <option value="LOW">LOW</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label for="cust-category">Category *</label>
+                                <input type="text" id="cust-category" placeholder="e.g. Broken Authentication"
+                                    value="Broken Authentication" required>
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="cust-asset">Target Asset *</label>
+                                <input type="text" id="cust-asset" placeholder="e.g. auth.internal.company.com"
+                                    value="auth.internal.company.com" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group flex-1">
+                                <label for="cust-endpoint">Endpoint / Method</label>
+                                <input type="text" id="cust-endpoint"
+                                    placeholder="e.g. GET /oauth/callback?state=invalid">
+                            </div>
+                            <div class="form-group flex-1">
+                                <label for="cust-cve">CVE ID (Optional)</label>
+                                <input type="text" id="cust-cve" placeholder="e.g. CVE-2024-XXXX">
+                            </div>
+                        </div>
+
+                        <div class="form-group">
+                            <label for="cust-evidence">Telemetry / Evidence / Logs / Payload (JSON or Text) *</label>
+                            <textarea id="cust-evidence" rows="5"
+                                placeholder='{"http_request": "GET /oauth/callback?code=abc", "log": "State verification bypassed due to missing CSRF token check"}'
+                                required>{"http_request": "GET /oauth/callback?state=missing&code=AUTH_CODE_9812", "server_response": "HTTP 200 OK - User logged in as admin without state parameter validation", "log_snippet": "OAuthValidator: Warning - state parameter was not checked"}</textarea>
+                        </div>
+
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" id="btn-cancel-sandbox">Cancel</button>
+                            <button type="submit" class="btn btn-primary" id="btn-submit-sandbox">
+                                <span>⚡</span> Run AI Analysis
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+
+        <!-- EXPORT MODAL -->
+        <div class="modal-overlay" id="export-modal" style="display: none;">
+            <div class="modal-card modal-sm">
+                <div class="modal-header">
+                    <div class="modal-title">
+                        <span class="modal-icon">📥</span>
+                        <h3>Export Security Report</h3>
+                    </div>
+                    <button class="modal-close" id="btn-close-export">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <p class="modal-desc">Choose a structured format to export all findings and AI-generated
+                        intelligence:</p>
+                    <div class="export-options-grid">
+                        <a href="/api/export/json" download="security_ai_report.json" class="export-option-card">
+                            <span class="export-icon">💾</span>
+                            <div class="export-info">
+                                <strong>Structured JSON</strong>
+                                <span>Ready for SIEM/SOAR/ASPM integration</span>
+                            </div>
+                        </a>
+                        <a href="/api/export/markdown" download="security_ai_report.md" class="export-option-card">
+                            <span class="export-icon">📝</span>
+                            <div class="export-info">
+                                <strong>Markdown Report</strong>
+                                <span>Formatted for GitHub, GitLab & docs</span>
+                            </div>
+                        </a>
+                        <a href="/api/export/html" download="security_ai_report.html" class="export-option-card">
+                            <span class="export-icon">🌐</span>
+                            <div class="export-info">
+                                <strong>Executive HTML Dashboard</strong>
+                                <span>Standalone print-ready visual report</span>
+                            </div>
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Application Javascript Logic -->
+    <script src="app.js"></script>
+</body>
+
+</html>
