@@ -5,7 +5,7 @@
 
 > [!NOTE]
 > **Prototype Demonstration & Production Blueprint**:  
-> This repository is a functional demonstration and architectural proof-of-concept. For the complete specification detailing the production AI models, Multi-Agent architecture, training pipelines, and the **Enterprise Security GraphRAG system**, see [DEMO_VS_PRODUCTION_SYSTEM_ARCHITECTURE.md](file:///c:/Security/DEMO_VS_PRODUCTION_SYSTEM_ARCHITECTURE.md).
+> This repository is a functional demonstration and architectural proof-of-concept.
 
 ---
 
