@@ -79,8 +79,9 @@ yarn-error.log*
 *.sqlite3
 *.db
 
-# Postman Runtime Caches & Local Artifacts
+# Postman Collections, Runtime Caches & Local Artifacts
 .postman/
+postman/
 
 # Scratch & Temporary Folders
 scratch/

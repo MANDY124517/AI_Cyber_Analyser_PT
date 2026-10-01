@@ -1,8 +1,0 @@
-name: "\U0001F6E1️ CyberTriage AI Local Environment"
-values:
-  - key: baseUrl
-    value: 'http://127.0.0.1:8000'
-  - key: finding_id
-    value: SEC-001
-  - key: last_custom_id
-    value: ''
