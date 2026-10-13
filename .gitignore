@@ -57,6 +57,8 @@ venv.bak/
 .venv/
 
 # Testing, Coverage & Quality Gates
+tests/
+test/
 .pytest_cache/
 .coverage
 .coverage.*
