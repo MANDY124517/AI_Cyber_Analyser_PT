@@ -1,0 +1,23 @@
+services:
+  cybertriage:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cybertriage-soc
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - LLM_PROVIDER=ollama
+      - USE_OLLAMA=true
+      - OLLAMA_MODEL=hermes3:3b
+      - ALLOW_MOCK_FALLBACK=false
+    volumes:
+      - ollama_models:/root/.ollama
+      - app_logs:/app/logs
+
+volumes:
+  ollama_models:
+  app_logs:

@@ -21,7 +21,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Identity & Access Team",
-      "tags": ["rce", "java", "supply-chain", "critical-infrastructure"]
+      "tags": [
+        "rce",
+        "java",
+        "supply-chain",
+        "critical-infrastructure"
+      ]
     }
   },
   {
@@ -46,7 +51,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Frontend Core Team",
-      "tags": ["xss", "stored-xss", "dom-injection", "session-hijacking"]
+      "tags": [
+        "xss",
+        "stored-xss",
+        "dom-injection",
+        "session-hijacking"
+      ]
     }
   },
   {
@@ -72,7 +82,13 @@
     "metadata": {
       "environment": "production",
       "owner": "Billing & Payments Team",
-      "tags": ["bola", "idor", "api-security", "tenant-isolation", "pii-leak"]
+      "tags": [
+        "bola",
+        "idor",
+        "api-security",
+        "tenant-isolation",
+        "pii-leak"
+      ]
     }
   },
   {
@@ -97,7 +113,13 @@
     "metadata": {
       "environment": "production",
       "owner": "Data Engineering & Cloud Ops",
-      "tags": ["cloud-security", "gcs", "s3", "data-exposure", "gdpr-risk"]
+      "tags": [
+        "cloud-security",
+        "gcs",
+        "s3",
+        "data-exposure",
+        "gdpr-risk"
+      ]
     }
   },
   {
@@ -122,7 +144,13 @@
     "metadata": {
       "environment": "production",
       "owner": "Infrastructure / DevOps",
-      "tags": ["exposed-service", "redis", "unauthenticated", "cache-tampering", "rce-risk"]
+      "tags": [
+        "exposed-service",
+        "redis",
+        "unauthenticated",
+        "cache-tampering",
+        "rce-risk"
+      ]
     }
   },
   {
@@ -139,7 +167,12 @@
     "timestamp": "2026-09-18T10:31:05Z",
     "status": "OPEN",
     "evidence": {
-      "protocols_supported": ["TLSv1.0 (deprecated)", "TLSv1.1 (deprecated)", "TLSv1.2", "TLSv1.3"],
+      "protocols_supported": [
+        "TLSv1.0 (deprecated)",
+        "TLSv1.1 (deprecated)",
+        "TLSv1.2",
+        "TLSv1.3"
+      ],
       "vulnerable_ciphers": [
         "TLS_RSA_WITH_3DES_EDE_CBC_SHA (Sweet32 Vulnerable, 64-bit block size)",
         "TLS_ECDHE_RSA_WITH_AES_128_CBC_SHA (CBC mode padding oracle prone)"
@@ -150,7 +183,13 @@
     "metadata": {
       "environment": "production",
       "owner": "Network Engineering",
-      "tags": ["ssl-tls", "sweet32", "crypto", "pci-dss", "ciphers"]
+      "tags": [
+        "ssl-tls",
+        "sweet32",
+        "crypto",
+        "pci-dss",
+        "ciphers"
+      ]
     }
   },
   {
@@ -176,7 +215,12 @@
     "metadata": {
       "environment": "production",
       "owner": "E-Commerce Backend Team",
-      "tags": ["sqli", "time-based-sqli", "database-leak", "sqlmap"]
+      "tags": [
+        "sqli",
+        "time-based-sqli",
+        "database-leak",
+        "sqlmap"
+      ]
     }
   },
   {
@@ -193,15 +237,21 @@
     "timestamp": "2026-09-18T10:38:00Z",
     "status": "OPEN",
     "evidence": {
-      "leaked_token_1": "sk_live_51Mszxxxxxxxxxxxxxxxxxxxxxxxxxxxx99A2",
+      "leaked_token_1": "sk_test_mock_dummy_stripe_key_000000000000000000000",
       "leaked_token_2": "AKIAIOSFODNN7EXAMPLE (AWS Access Key ID) & wJalrXUtnFEMI/K7MDENG/bPxRfiCYEXAMPLEKEY",
-      "code_context_in_js": "const STRIPE_SECRET = 'sk_live_51Msz...'; const s3Uploader = new AWS.S3({ accessKeyId: 'AKIA...', secretAccessKey: 'wJalr...' });",
+      "code_context_in_js": "const STRIPE_SECRET = 'sk_test_mock_dummy_stripe_key_...'; const s3Uploader = new AWS.S3({ accessKeyId: 'AKIA...', secretAccessKey: 'wJalr...' });",
       "live_validation": "Verified key valid against Stripe API (Read/Write charges permitted)."
     },
     "metadata": {
       "environment": "production",
       "owner": "Frontend Applications Team",
-      "tags": ["secret-leak", "hardcoded-credentials", "stripe", "aws-keys", "supply-chain"]
+      "tags": [
+        "secret-leak",
+        "hardcoded-credentials",
+        "stripe",
+        "aws-keys",
+        "supply-chain"
+      ]
     }
   },
   {
@@ -226,7 +276,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Integrations Team",
-      "tags": ["ssrf", "imds", "cloud-credential-theft", "aws-metadata"]
+      "tags": [
+        "ssrf",
+        "imds",
+        "cloud-credential-theft",
+        "aws-metadata"
+      ]
     }
   },
   {
@@ -252,7 +307,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Platform Gateway Team",
-      "tags": ["jwt", "authentication-bypass", "privilege-escalation", "token-forge"]
+      "tags": [
+        "jwt",
+        "authentication-bypass",
+        "privilege-escalation",
+        "token-forge"
+      ]
     }
   },
   {
@@ -277,7 +337,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Analytics Service Team",
-      "tags": ["path-traversal", "lfi", "file-disclosure", "linux"]
+      "tags": [
+        "path-traversal",
+        "lfi",
+        "file-disclosure",
+        "linux"
+      ]
     }
   },
   {
@@ -301,7 +366,12 @@
     "metadata": {
       "environment": "production",
       "owner": "API Core Team",
-      "tags": ["cors", "origin-reflection", "csrf-risk", "session-leak"]
+      "tags": [
+        "cors",
+        "origin-reflection",
+        "csrf-risk",
+        "session-leak"
+      ]
     }
   },
   {
@@ -325,7 +395,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Identity & Access Management",
-      "tags": ["rate-limiting", "credential-stuffing", "account-enumeration", "brute-force"]
+      "tags": [
+        "rate-limiting",
+        "credential-stuffing",
+        "account-enumeration",
+        "brute-force"
+      ]
     }
   },
   {
@@ -350,7 +425,12 @@
     "metadata": {
       "environment": "production",
       "owner": "Legacy Systems Maintenance",
-      "tags": ["deserialization", "pickle", "rce", "python-security"]
+      "tags": [
+        "deserialization",
+        "pickle",
+        "rce",
+        "python-security"
+      ]
     }
   },
   {
@@ -375,7 +455,13 @@
     "metadata": {
       "environment": "production",
       "owner": "Platform Engineering & Kubernetes Team",
-      "tags": ["kubernetes", "kubelet", "container-escape", "cluster-takeover", "exposed-port"]
+      "tags": [
+        "kubernetes",
+        "kubelet",
+        "container-escape",
+        "cluster-takeover",
+        "exposed-port"
+      ]
     }
   }
 ]

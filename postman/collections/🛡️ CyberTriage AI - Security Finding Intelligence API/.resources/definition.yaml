@@ -1,2 +1,0 @@
-$kind: collection
-description: Postman Collection for inspecting sending/receiving JSON payloads, running AI triage, validating schema compliance, and executing automated anti-hallucination test suites.
