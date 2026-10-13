@@ -3,7 +3,7 @@ import json
 import re
 import hashlib
 import asyncio
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from datetime import datetime, timezone
 import httpx
 
@@ -14,8 +14,23 @@ except ImportError:
     pass
 
 from models import SecurityFinding, FindingAnalysis, ImpactAnalysis, RemediationPlan
-from pipeline.prompts import SYSTEM_CYBER_PROMPT, format_finding_for_analysis
+from pipeline.prompts import (
+    SYSTEM_CYBER_PROMPT,
+    SECURITY_GROUNDING_POLICY,
+    format_finding_for_analysis,
+    build_isolated_prompt_payload,
+)
 from pipeline.json_repair import repair_and_parse_json
+from schema.security_engine_schema import SecurityContextPayload
+from schema.grounded_response_schema import (
+    GroundedAIResponse,
+    EpistemicBreakdown,
+    StructuredClaim,
+    GroundingEvaluationSummary,
+)
+from schema.normalizer import SecurityEngineNormalizer
+from grounding.evaluator import GroundingEvaluator
+from grounding.guardian import GraniteGuardianVerifier, GuardianAuditResult
 
 
 def clean_and_parse_json(text: str) -> Dict[str, Any]:
@@ -26,18 +41,29 @@ def clean_and_parse_json(text: str) -> Dict[str, Any]:
 class CybersecurityAIEngine:
     """
     AI Processing Layer for Cybersecurity Findings.
-    Supports live LLMs (Ollama, Gemini, OpenAI, Anthropic) and includes
-    a dynamic domain intelligence analyzer for offline/local execution.
+    Executes live local LLM inference (Ollama) and API backends with strict grounding verification.
     """
 
-    def __init__(self, provider: Optional[str] = None):
+    def __init__(self, provider: Optional[str] = None, guardian_model: Optional[str] = None):
         self.gemini_key = os.getenv("GEMINI_API_KEY")
         self.openai_key = os.getenv("OPENAI_API_KEY")
         self.anthropic_key = os.getenv("ANTHROPIC_API_KEY")
-        self.ollama_host = os.getenv("OLLAMA_HOST", "http://localhost:11434")
+        
+        # Normalize localhost -> 127.0.0.1 for Windows network reliability
+        raw_host = os.getenv("OLLAMA_HOST", "http://127.0.0.1:11434")
+        if "localhost" in raw_host:
+            raw_host = raw_host.replace("localhost", "127.0.0.1")
+        self.ollama_host = raw_host
+        
         self.provider = provider or self._detect_provider()
         self._finding_cache: Dict[str, FindingAnalysis] = {}
+        self._grounded_cache: Dict[str, GroundedAIResponse] = {}
         self._ollama_lock = asyncio.Lock()
+        self.evaluator = GroundingEvaluator()
+        self.guardian = GraniteGuardianVerifier(
+            ollama_host=self.ollama_host,
+            guardian_model=guardian_model
+        )
 
     def _fingerprint(self, finding: SecurityFinding) -> str:
         """Generate a deterministic fingerprint hash for a finding."""
@@ -56,47 +82,154 @@ class CybersecurityAIEngine:
             return "openai"
         elif self.anthropic_key:
             return "anthropic"
-        return "dynamic-engine"
+        return "ollama"
 
-    async def analyze_finding(self, finding: SecurityFinding) -> FindingAnalysis:
+    async def analyze_finding(self, finding: SecurityFinding, target_model: Optional[str] = None) -> FindingAnalysis:
         """Process a security finding through the AI layer and return structured FindingAnalysis."""
         # 0. Check in-memory result cache for 0ms retrieval
-        fp = self._fingerprint(finding)
+        fp = f"{self._fingerprint(finding)}|{target_model or ''}"
         if fp in self._finding_cache:
             return self._finding_cache[fp]
 
-        # 1. Try active live LLM provider
-        try:
-            res: Optional[FindingAnalysis] = None
-            if self.provider == "openai" and self.openai_key:
-                res = await self._analyze_with_openai(finding)
-            elif self.provider == "gemini" and self.gemini_key:
-                res = await self._analyze_with_gemini(finding)
-            elif self.provider == "anthropic" and self.anthropic_key:
-                res = await self._analyze_with_anthropic(finding)
-            elif self.provider == "ollama":
-                res = await self._analyze_with_ollama(finding)
-            
-            if res is not None:
-                self._finding_cache[fp] = res
-                return res
-        except Exception as e:
-            import logging
-            logging.getLogger("CybersecurityAIEngine").warning(
-                f"Live LLM provider '{self.provider}' encountered transient issue ({e}). Using dynamic telemetry analyzer."
-            )
-            fallback = self._generate_dynamic_analysis(finding)
-            fallback.model_used = f"ai-engine-dynamic (live-{self.provider}-recovery)"
-            self._finding_cache[fp] = fallback
-            return fallback
+        # 1. Execute live LLM inference
+        res: Optional[FindingAnalysis] = None
+        if self.provider == "openai" and self.openai_key:
+            res = await self._analyze_with_openai(finding)
+        elif self.provider == "gemini" and self.gemini_key:
+            res = await self._analyze_with_gemini(finding)
+        elif self.provider == "anthropic" and self.anthropic_key:
+            res = await self._analyze_with_anthropic(finding)
+        else:
+            # Default production provider: Local Ollama
+            res = await self._analyze_with_ollama(finding, target_model=target_model)
+        
+        if res is not None:
+            self._finding_cache[fp] = res
+            return res
 
-        # 2. Dynamic heuristic AI analyzer for findings without external LLM
-        fallback = self._generate_dynamic_analysis(finding)
-        self._finding_cache[fp] = fallback
-        return fallback
+        raise RuntimeError(f"Analysis failed to produce result using provider '{self.provider}'")
+
+    async def analyze_grounded(
+        self,
+        finding: SecurityFinding,
+        target_model: Optional[str] = None,
+        enable_guardian: Optional[bool] = None
+    ) -> GroundedAIResponse:
+        """
+        Process finding through AI layer, validate against formal schema, and run deterministic grounding evaluation
+        alongside IBM Granite Guardian 3 (8B) safety verification.
+        Returns a complete GroundedAIResponse.
+        """
+        fp = f"{self._fingerprint(finding)}|grounded|{target_model or ''}|{enable_guardian}"
+        if fp in self._grounded_cache:
+            return self._grounded_cache[fp]
+
+        # 1. Run core analysis
+        analysis = await self.analyze_finding(finding, target_model=target_model)
+
+        # 2. Normalize finding into formal context payload
+        context = SecurityEngineNormalizer.from_security_finding(finding)
+
+        # 3. Perform deterministic grounding evaluation
+        eval_result = self.evaluator.evaluate_response(
+            analysis=analysis,
+            context=context,
+            model_name=analysis.model_used
+        )
+
+        # 4. Construct Epistemic Breakdown
+        epistemic = EpistemicBreakdown(
+            verified_facts=eval_result.supported_claims,
+            inferences=eval_result.inferences,
+            unknowns=eval_result.unknowns,
+            recommendations=[
+                analysis.recommended_remediation.immediate_mitigation,
+                analysis.recommended_remediation.permanent_fix,
+                analysis.recommended_remediation.verification_steps
+            ]
+        )
+
+        # 5. Construct Structured Claims
+        structured_claims = []
+        for claim in eval_result.supported_claims:
+            structured_claims.append(StructuredClaim(
+                claim_text=claim,
+                epistemic_type="VERIFIED FACT",
+                is_grounded=True,
+                confidence=1.0
+            ))
+        for claim in eval_result.unsupported_claims:
+            structured_claims.append(StructuredClaim(
+                claim_text=claim,
+                epistemic_type="ASSUMPTION",
+                is_grounded=False,
+                confidence=0.3
+            ))
+
+        # 6. IBM Granite Guardian 3 Safety & Grounding Audit (Dual-Engine Interceptor)
+        guardian_res: Optional[GuardianAuditResult] = None
+        should_run_guardian = enable_guardian
+        if should_run_guardian is None:
+            should_run_guardian = (
+                os.getenv("ENABLE_GRANITE_GUARDIAN", "false").lower() in ["true", "1", "yes"]
+                or (target_model and "guardian" in target_model.lower())
+            )
+
+        if should_run_guardian and self.guardian.is_available():
+            try:
+                context_summary = (
+                    f"Asset: {finding.asset}. "
+                    f"Ports: {[p.port for p in context.ports_services]}. "
+                    f"Services: {[p.service_name for p in context.ports_services]}. "
+                    f"CVEs: {context.cves}. "
+                    f"Severity: {finding.severity}."
+                )
+                response_summary = f"{analysis.explanation} {analysis.recommended_remediation.permanent_fix}"
+                raw_payload = json.dumps(finding.evidence)
+                guardian_res = await self.guardian.audit_finding(
+                    context_text=context_summary,
+                    ai_response_text=response_summary,
+                    raw_telemetry=raw_payload
+                )
+                if not guardian_res.groundedness_passed:
+                    eval_result.unsupported_claims.append(
+                        f"Granite Guardian: Flagged ungrounded claims ({guardian_res.raw_verdict})"
+                    )
+                if guardian_res.jailbreak_detected:
+                    eval_result.prompt_injection_detected = True
+                    eval_result.security_policy_violations.append(
+                        "Granite Guardian: Prompt injection / jailbreak detected in telemetry"
+                    )
+            except Exception:
+                pass
+
+        eval_summary = GroundingEvaluationSummary(
+            grounding_score=eval_result.grounding_score,
+            hallucination_score=eval_result.hallucination_score,
+            unsupported_claims=eval_result.unsupported_claims,
+            supported_claims=eval_result.supported_claims,
+            contradictions=eval_result.contradictions,
+            security_policy_violations=eval_result.security_policy_violations,
+            prompt_injection_detected=eval_result.prompt_injection_detected,
+            evaluation_passed=eval_result.evaluation_passed and (guardian_res is None or guardian_res.is_safe),
+            guardian_audit=guardian_res
+        )
+
+        grounded_response = GroundedAIResponse(
+            finding_id=finding.id,
+            epistemic_breakdown=epistemic,
+            analysis=analysis,
+            claims=structured_claims,
+            evaluation=eval_summary,
+            guardian_audit=guardian_res,
+            model_used=analysis.model_used
+        )
+
+        self._grounded_cache[fp] = grounded_response
+        return grounded_response
 
     async def _analyze_with_openai(self, finding: SecurityFinding) -> FindingAnalysis:
-        prompt = format_finding_for_analysis(finding.model_dump())
+        prompt_payload = build_isolated_prompt_payload(finding.model_dump())
         async with httpx.AsyncClient(timeout=45.0) as client:
             resp = await client.post(
                 "https://api.openai.com/v1/chat/completions",
@@ -104,8 +237,8 @@ class CybersecurityAIEngine:
                 json={
                     "model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
                     "messages": [
-                        {"role": "system", "content": SYSTEM_CYBER_PROMPT},
-                        {"role": "user", "content": prompt}
+                        {"role": "system", "content": prompt_payload["system"]},
+                        {"role": "user", "content": prompt_payload["user"]}
                     ],
                     "response_format": {"type": "json_object"},
                     "temperature": 0.2
@@ -119,13 +252,13 @@ class CybersecurityAIEngine:
             return FindingAnalysis.model_validate(parsed)
 
     async def _analyze_with_gemini(self, finding: SecurityFinding) -> FindingAnalysis:
-        prompt = format_finding_for_analysis(finding.model_dump())
+        prompt_payload = build_isolated_prompt_payload(finding.model_dump())
         primary_model = os.getenv("GEMINI_MODEL", "gemini-3.6-flash")
         candidate_models = list(dict.fromkeys([primary_model, "gemini-3-flash-preview", "gemini-flash-latest"]))
 
         payload = {
-            "system_instruction": {"parts": [{"text": SYSTEM_CYBER_PROMPT}]},
-            "contents": [{"parts": [{"text": prompt}]}],
+            "system_instruction": {"parts": [{"text": prompt_payload["system"]}]},
+            "contents": [{"parts": [{"text": prompt_payload["user"]}]}],
             "generationConfig": {
                 "response_mime_type": "application/json",
                 "temperature": 0.2
@@ -162,7 +295,7 @@ class CybersecurityAIEngine:
             raise Exception(f"Gemini API call failed: {last_err}")
 
     async def _analyze_with_anthropic(self, finding: SecurityFinding) -> FindingAnalysis:
-        prompt = format_finding_for_analysis(finding.model_dump())
+        prompt_payload = build_isolated_prompt_payload(finding.model_dump())
         async with httpx.AsyncClient(timeout=45.0) as client:
             resp = await client.post(
                 "https://api.anthropic.com/v1/messages",
@@ -174,8 +307,8 @@ class CybersecurityAIEngine:
                 json={
                     "model": "claude-3-5-sonnet-20241022",
                     "max_tokens": 2048,
-                    "system": SYSTEM_CYBER_PROMPT,
-                    "messages": [{"role": "user", "content": prompt}]
+                    "system": prompt_payload["system"],
+                    "messages": [{"role": "user", "content": prompt_payload["user"]}]
                 }
             )
             resp.raise_for_status()
@@ -185,13 +318,13 @@ class CybersecurityAIEngine:
             parsed["model_used"] = "claude-3-5-sonnet"
             return FindingAnalysis.model_validate(parsed)
 
-    async def _analyze_with_ollama(self, finding: SecurityFinding) -> FindingAnalysis:
-        prompt = format_finding_for_analysis(finding.model_dump())
-        model_name = os.getenv("OLLAMA_MODEL", "hermes3:3b")
+    async def _analyze_with_ollama(self, finding: SecurityFinding, target_model: Optional[str] = None) -> FindingAnalysis:
+        prompt_payload = build_isolated_prompt_payload(finding.model_dump())
+        model_name = target_model or os.getenv("OLLAMA_MODEL", "hermes3:3b")
 
         options: Dict[str, Any] = {
             "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "4096")),
-            "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "2048")),
+            "num_predict": int(os.getenv("OLLAMA_NUM_PREDICT", "3072")),
             "temperature": float(os.getenv("OLLAMA_TEMPERATURE", "0.2")),
             "top_p": float(os.getenv("OLLAMA_TOP_P", "0.9")),
             "top_k": int(os.getenv("OLLAMA_TOP_K", "40")),
@@ -207,8 +340,8 @@ class CybersecurityAIEngine:
 
         payload = {
             "model": model_name,
-            "system": SYSTEM_CYBER_PROMPT,
-            "prompt": prompt,
+            "system": prompt_payload["system"],
+            "prompt": prompt_payload["user"],
             "format": "json",
             "stream": False,
             "keep_alive": os.getenv("OLLAMA_KEEP_ALIVE", "60m"),
@@ -225,6 +358,9 @@ class CybersecurityAIEngine:
                     req_options["repeat_penalty"] = 1.25
                     req_options["repeat_last_n"] = 128
                     req_options["top_k"] = 50
+                    # If prior attempt failed with CUDA/memory crash, fallback to CPU
+                    if last_err and any(k in str(last_err).lower() for k in ["cuda", "memory", "terminated", "0xc0000409", "shared object"]):
+                        req_options["num_gpu"] = 0
 
                 req_payload = dict(payload)
                 req_payload["options"] = req_options
@@ -239,7 +375,11 @@ class CybersecurityAIEngine:
                             err_detail = f"Ollama HTTP {resp.status_code}: {resp.text}"
                             raise httpx.HTTPStatusError(err_detail, request=resp.request, response=resp)
 
-                        content = resp.json().get("response", "")
+                        resp_json = resp.json()
+                        if "error" in resp_json:
+                            raise RuntimeError(f"Ollama generation error: {resp_json['error']}")
+
+                        content = resp_json.get("response", "")
                         parsed = clean_and_parse_json(content)
                         parsed["analyzed_at"] = datetime.now(timezone.utc).isoformat()
                         parsed["model_used"] = f"ollama/{model_name}"
@@ -252,65 +392,3 @@ class CybersecurityAIEngine:
 
             if last_err:
                 raise last_err
-
-    def _generate_dynamic_analysis(self, finding: SecurityFinding) -> FindingAnalysis:
-        """Dynamic high-fidelity cybersecurity heuristic analyzer for findings without external LLM."""
-        sev = finding.severity.upper()
-        cat = finding.category.upper()
-
-        has_logs = "log" in str(finding.evidence).lower() or "socket" in str(finding.evidence).lower()
-        has_payload = "payload" in str(finding.evidence).lower() or "curl" in str(finding.evidence).lower()
-        confidence_score = 0.95 if (has_logs and has_payload) else (0.90 if (has_logs or has_payload) else 0.75)
-        conf_rating = "HIGH" if confidence_score >= 0.85 else ("MEDIUM" if confidence_score >= 0.65 else "LOW")
-
-        priority_map = {
-            "CRITICAL": "P0 - Critical",
-            "HIGH": "P1 - High",
-            "MEDIUM": "P2 - Medium",
-            "LOW": "P3 - Low",
-            "INFORMATIONAL": "P3 - Low"
-        }
-        priority = priority_map.get(sev, "P2 - Medium")
-
-        owasp_map = {
-            "XSS": "A03:2021-Injection",
-            "SQL INJECTION": "A03:2021-Injection",
-            "IDOR/BOLA": "A01:2021-Broken Access Control",
-            "BROKEN AUTHENTICATION": "A07:2021-Identification and Authentication Failures",
-            "SECURITY MISCONFIGURATION": "A05:2021-Security Misconfiguration",
-            "EXPOSED SERVICES": "A05:2021-Security Misconfiguration",
-            "SSL/TLS ISSUES": "A02:2021-Cryptographic Failures",
-            "SSRF": "A10:2021-Server-Side Request Forgery",
-            "SECRET LEAK": "A07:2021-Identification and Authentication Failures",
-            "PATH TRAVERSAL": "A01:2021-Broken Access Control",
-            "INSECURE DESERIALIZATION": "A08:2021-Software and Data Integrity Failures",
-            "CVE": "A06:2021-Vulnerable and Outdated Components"
-        }
-        owasp = owasp_map.get(cat, "A05:2021-Security Misconfiguration")
-
-        return FindingAnalysis(
-            explanation=f"A {finding.severity} severity {finding.category} issue was detected on asset '{finding.asset}' ({finding.title}). The component '{finding.component or 'target service'}' exhibits insecure behavior under specific request conditions.",
-            impact=ImpactAnalysis(
-                technical_impact=f"Unauthorized access, information disclosure, or operational disturbance affecting {finding.asset}.",
-                business_impact=f"Potential violation of internal security baselines, risk to data confidentiality and service reliability.",
-                blast_radius=f"Confined to {finding.asset} and closely integrated upstream microservices."
-            ),
-            evidence_interpretation=f"Scanner and telemetry data indicate verified anomaly on endpoint '{finding.endpoint or 'service port'}'. Telemetry fields: {list(finding.evidence.keys())} provide affirmative detection.",
-            recommended_remediation=RemediationPlan(
-                immediate_mitigation=f"Restrict network ingress to {finding.asset} or deploy WAF filtering rules targeting anomalous patterns.",
-                permanent_fix=f"Apply official security updates, enforce strict input validation/authorization checks, and reconfigure component '{finding.component or 'service'}'.",
-                code_sample_patch=f"# Remediation patch for {finding.asset}\n# 1. Update component configuration\n# 2. Enforce strict parameter validation\n# 3. Apply least-privilege access policies",
-                verification_steps=f"Re-scan asset {finding.asset} using {finding.discovery_tool or 'security scanner'} to confirm resolution."
-            ),
-            executive_summary=f"Security analysis identified a {finding.severity.lower()}-risk {finding.category} vulnerability on '{finding.asset}' requiring {priority} remediation to prevent unauthorized access.",
-            developer_oriented_explanation=f"Developers should inspect the handling of endpoint '{finding.endpoint}' in '{finding.component}'. Ensure inputs are sanitized, authentication and authorization barriers are strictly enforced, and outdated dependencies are patched.",
-            confidence_reasoning=f"Assigned confidence score of {confidence_score:.2f} ({conf_rating}) based on telemetry provided by {finding.discovery_tool or 'automated inspection'}.",
-            confidence_score=confidence_score,
-            confidence_rating=conf_rating,
-            remediation_effort="Medium" if sev in ["CRITICAL", "HIGH"] else "Low",
-            suggested_priority=priority,
-            owasp_category=owasp,
-            mitre_tactics_techniques=["T1190 - Exploit Public-Facing Application"],
-            analyzed_at=datetime.now(timezone.utc).isoformat(),
-            model_used="cyber-dynamic-analyzer-v1"
-        )

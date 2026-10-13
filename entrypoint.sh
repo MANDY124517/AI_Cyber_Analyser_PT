@@ -22,7 +22,7 @@ if [ "${USE_OLLAMA}" = "true" ] || [ "${LLM_PROVIDER}" = "ollama" ]; then
         sleep 1
     done
 
-    MODEL_NAME="${OLLAMA_MODEL:-hermes3:3b}"
+    MODEL_NAME="${OLLAMA_MODEL:-ibm/granite3-guardian:8b}"
     echo "[*] Verifying model availability: ${MODEL_NAME}..."
     if ! ollama list | grep -q "${MODEL_NAME}"; then
         echo "[*] Model '${MODEL_NAME}' not found in image cache. Pulling now..."

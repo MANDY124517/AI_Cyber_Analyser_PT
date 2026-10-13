@@ -167,7 +167,12 @@ class FindingAnalysis(BaseModel):
     def normalize_analysis(cls, data: Any) -> Any:
         if not isinstance(data, dict):
             return data
-        normalized = dict(data)
+        
+        try:
+            from pipeline.json_repair import _normalize_analysis_dict
+            normalized = _normalize_analysis_dict(dict(data))
+        except Exception:
+            normalized = dict(data)
         
         # Normalize key aliases
         if "explanation" not in normalized:
@@ -184,6 +189,7 @@ class FindingAnalysis(BaseModel):
             normalized["developer_oriented_explanation"] = normalized.get("dev_explanation") or normalized.get("technical_explanation") or str(normalized["explanation"])
         if "confidence_reasoning" not in normalized:
             normalized["confidence_reasoning"] = normalized.get("confidence_explanation") or "High confidence based on verified scanner telemetry."
+
 
         # Stringify any nested dicts/lists returned by LLMs for string fields
         for str_field in ["evidence_interpretation", "explanation", "executive_summary", "developer_oriented_explanation", "confidence_reasoning"]:

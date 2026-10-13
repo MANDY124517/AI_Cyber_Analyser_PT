@@ -641,31 +641,31 @@ function renderInspector(item) {
 
     if (a) {
         // 1. Executive View
-        inspExecSummary.textContent = a.executive_summary;
-        inspBizImpact.textContent = a.impact.business_impact;
-        inspBlastRadius.textContent = a.impact.blast_radius;
+        inspExecSummary.textContent = formatText(a.executive_summary);
+        inspBizImpact.textContent = formatText(a.impact.business_impact);
+        inspBlastRadius.textContent = formatText(a.impact.blast_radius);
         inspPriority.textContent = a.suggested_priority;
         inspEffort.textContent = a.remediation_effort;
         inspConfidencePill.textContent = `${Math.round(a.confidence_score * 100)}% (${a.confidence_rating})`;
 
         // 2. Developer View
-        inspDevExplanation.textContent = a.developer_oriented_explanation;
-        inspRemImmediate.textContent = a.recommended_remediation.immediate_mitigation;
-        inspRemPermanent.textContent = a.recommended_remediation.permanent_fix;
-        inspCodePatch.textContent = a.recommended_remediation.code_sample_patch || '# No code patch specified for this finding';
-        inspRemVerification.textContent = a.recommended_remediation.verification_steps;
+        inspDevExplanation.textContent = formatText(a.developer_oriented_explanation);
+        inspRemImmediate.textContent = formatText(a.recommended_remediation.immediate_mitigation);
+        inspRemPermanent.textContent = formatText(a.recommended_remediation.permanent_fix);
+        inspCodePatch.textContent = formatText(a.recommended_remediation.code_sample_patch) || '# No code patch specified for this finding';
+        inspRemVerification.textContent = formatText(a.recommended_remediation.verification_steps);
 
         // 3. Technical View
-        inspExplanation.textContent = a.explanation;
-        inspTechImpact.textContent = a.impact.technical_impact;
-        inspEvidenceInterpretation.textContent = a.evidence_interpretation;
+        inspExplanation.textContent = formatText(a.explanation);
+        inspTechImpact.textContent = formatText(a.impact.technical_impact);
+        inspEvidenceInterpretation.textContent = formatText(a.evidence_interpretation);
 
         // 5. Confidence & Taxonomy
         const pct = Math.round(a.confidence_score * 100);
         inspConfBar.style.width = `${pct}%`;
         inspConfScoreText.textContent = `${pct}% Confidence Score`;
         inspConfRatingText.textContent = `Rating: ${a.confidence_rating}`;
-        inspConfReasoning.textContent = a.confidence_reasoning;
+        inspConfReasoning.textContent = formatText(a.confidence_reasoning);
         inspOwasp.textContent = a.owasp_category || 'N/A';
         inspModel.textContent = a.model_used || 'ai-cyber-analyzer-v1';
 
@@ -709,7 +709,23 @@ function renderInspector(item) {
     }
 }
 
+function formatText(str) {
+    if (!str) return '';
+    let s = String(str).trim();
+    // Decode literal string escape sequences if present
+    if (s.includes('\\n')) s = s.replace(/\\n/g, '\n');
+    if (s.includes('\\t')) s = s.replace(/\\t/g, '\t');
+    if (s.includes('\\"')) s = s.replace(/\\"/g, '"');
+    if (s.includes("\\'")) s = s.replace(/\\'/g, "'");
+    // Strip leading language identifiers like 'java\n' from prose fields
+    if (s.startsWith("java\n") || s.startsWith("bash\n") || s.startsWith("python\n") || s.startsWith("json\n")) {
+        s = s.substring(s.indexOf('\n') + 1).trim();
+    }
+    return s;
+}
+
 function escapeHtml(str) {
     if (!str) return '';
     return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }
+

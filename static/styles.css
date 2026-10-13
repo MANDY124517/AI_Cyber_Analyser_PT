@@ -947,6 +947,8 @@ html, body {
     font-size: 13px;
     color: var(--text-primary);
     line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 .two-col-grid {
@@ -984,7 +986,10 @@ html, body {
     font-size: 12px;
     color: var(--text-primary);
     line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
+
 
 /* Triage KPI Key-Value Table */
 .key-value-list {

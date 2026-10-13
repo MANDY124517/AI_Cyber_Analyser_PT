@@ -25,7 +25,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("CyberTriageServer")
 
-from fastapi import FastAPI, HTTPException, Body, Response, Request
+from fastapi import FastAPI, HTTPException, Body, Response, Request, Query
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, JSONResponse, FileResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -34,11 +34,19 @@ from pydantic import BaseModel
 from models import SecurityFinding, FindingAnalysis, EnrichedFinding, BatchReport
 from pipeline.runner import FindingsPipelineRunner
 from pipeline.ai_engine import CybersecurityAIEngine
+from schema.security_engine_schema import SecurityContextPayload
+from schema.grounded_response_schema import GroundedAIResponse
+from schema.normalizer import SecurityEngineNormalizer
+from schema.json_schemas import get_security_context_json_schema, get_grounded_response_json_schema
+from grounding.evaluator import GroundingEvaluator
+from grounding.models import GroundingEvaluationResult
+from benchmark.runner import BenchmarkRunner
+from benchmark.metrics import ModelBenchmarkResult
 
 app = FastAPI(
-    title="CyberTriage AI Security Finding Analysis API",
-    description="Automated AI triage, root-cause explanation, and structured remediation engine for security findings",
-    version="1.4.0"
+    title="CyberTriage AI Security Finding Analysis & Grounding API",
+    description="Automated AI triage, deterministic grounding verification, formal schema validation, and Ollama model benchmarking",
+    version="2.0.0"
 )
 
 # Request logging middleware
@@ -63,9 +71,33 @@ STATIC_PATH = os.path.join(PROJECT_ROOT, "static")
 
 # Global runner instance
 runner = FindingsPipelineRunner()
+grounding_evaluator = GroundingEvaluator()
+benchmark_runner = BenchmarkRunner()
 
-# In-memory store of enriched findings for interactive updates (starts completely clean)
+# In-memory store of enriched findings for interactive updates
 state: Dict[str, EnrichedFinding] = {}
+
+
+def _init_default_findings():
+    """Load default findings if state is empty."""
+    if not state:
+        try:
+            findings = runner.load_findings()
+            for f in findings:
+                state[f.id] = EnrichedFinding(finding=f, analysis=None)
+            logger.info(f"Loaded {len(state)} security findings into active state.")
+        except Exception as e:
+            logger.warning(f"Could not load default findings: {e}")
+
+# Initialize on module import
+_init_default_findings()
+
+
+@app.on_event("startup")
+async def startup_event():
+    """Load default findings on server startup if state is empty."""
+    _init_default_findings()
+
 
 class CustomFindingRequest(BaseModel):
     title: str
@@ -79,10 +111,18 @@ class CustomFindingRequest(BaseModel):
     evidence: Dict[str, Any] = {}
     description: Optional[str] = None
 
+
+class GroundingEvaluationRequest(BaseModel):
+    analysis: Dict[str, Any]
+    context: Dict[str, Any]
+    model_name: Optional[str] = None
+
+
 @app.get("/api/findings", response_model=List[EnrichedFinding])
 async def get_findings():
     """Retrieve all findings with their current analysis status."""
     return list(state.values())
+
 
 @app.get("/api/findings/{finding_id}", response_model=EnrichedFinding)
 async def get_finding(finding_id: str):
@@ -101,7 +141,6 @@ async def import_findings(items: List[Dict[str, Any]]):
 
     for idx, item in enumerate(items):
         try:
-            # Auto-assign ID if missing
             if not item.get("id"):
                 item["id"] = f"INGEST-{uuid.uuid4().hex[:6].upper()}"
             if not item.get("timestamp"):
@@ -140,15 +179,65 @@ async def delete_finding(finding_id: str):
     raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
 
 @app.post("/api/analyze/{finding_id}", response_model=EnrichedFinding)
-async def analyze_finding(finding_id: str):
+async def analyze_finding(
+    finding_id: str,
+    model: Optional[str] = Query(None, description="Target Ollama model")
+):
     """Run AI analysis on a specific finding."""
     fid = finding_id.upper()
     if fid not in state:
         raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
     
-    enriched = await runner.analyze_single(state[fid].finding)
+    enriched = await runner.analyze_single(state[fid].finding, target_model=model)
     state[fid] = enriched
     return enriched
+
+@app.post("/api/analyze-grounded/{finding_id}", response_model=GroundedAIResponse)
+async def analyze_grounded(
+    finding_id: str,
+    model: Optional[str] = Query(None, description="Target Ollama model"),
+    guardian: Optional[bool] = Query(None, description="Enable IBM Granite Guardian 3 verification")
+):
+    """Run AI analysis on a specific finding with deterministic grounding evaluation & Granite Guardian audit."""
+    fid = finding_id.upper()
+    if fid not in state:
+        raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
+    
+    grounded_res = await runner.analyze_grounded(
+        state[fid].finding,
+        target_model=model,
+        enable_guardian=guardian
+    )
+    state[fid] = EnrichedFinding(finding=state[fid].finding, analysis=grounded_res.analysis)
+    return grounded_res
+
+@app.post("/api/guardian/audit/{finding_id}")
+async def audit_finding_with_guardian(
+    finding_id: str,
+    guardian_model: Optional[str] = Query(None, description="Granite Guardian model")
+):
+    """Run IBM Granite Guardian 3 (8B) safety, grounding, and anti-jailbreak audit."""
+    from grounding.guardian import GraniteGuardianVerifier
+    fid = finding_id.upper()
+    if fid not in state:
+        raise HTTPException(status_code=404, detail=f"Finding '{finding_id}' not found")
+    
+    target = state[fid].finding
+    if not state[fid].analysis:
+        enriched = await runner.analyze_single(target)
+        state[fid] = enriched
+    
+    analysis = state[fid].analysis
+    context_text = f"Asset: {target.asset}. Ports/Evidence: {json.dumps(target.evidence)}. Severity: {target.severity}."
+    analysis_text = f"{analysis.explanation} {analysis.recommended_remediation.permanent_fix}"
+    
+    verifier = GraniteGuardianVerifier(guardian_model=guardian_model)
+    audit_res = await verifier.audit_finding(
+        context_text=context_text,
+        ai_response_text=analysis_text,
+        raw_telemetry=json.dumps(target.evidence)
+    )
+    return audit_res.model_dump(mode="json")
 
 @app.post("/api/analyze-all", response_model=BatchReport)
 async def analyze_all():
@@ -190,6 +279,56 @@ async def analyze_custom(req: CustomFindingRequest):
     enriched = EnrichedFinding(finding=finding, analysis=analysis)
     state[custom_id] = enriched
     return enriched
+
+# Grounding & Schema Endpoints
+@app.post("/api/grounding/evaluate", response_model=GroundingEvaluationResult)
+async def evaluate_grounding(req: GroundingEvaluationRequest):
+    """Perform deterministic security grounding and hallucination evaluation."""
+    try:
+        res = grounding_evaluator.evaluate_response(
+            analysis=req.analysis,
+            context=req.context,
+            model_name=req.model_name
+        )
+        return res
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Grounding evaluation failed: {str(e)}")
+
+@app.get("/api/schema/security-engine")
+async def get_schema_security_engine():
+    """Return formal JSON Schema for SecurityContextPayload."""
+    return get_security_context_json_schema()
+
+@app.get("/api/schema/grounded-response")
+async def get_schema_grounded_response():
+    """Return formal JSON Schema for GroundedAIResponse."""
+    return get_grounded_response_json_schema()
+
+# Benchmark Endpoints
+@app.get("/api/benchmark/models")
+async def get_benchmark_models():
+    """List available local Ollama models for benchmarking."""
+    models = benchmark_runner.discover_ollama_models()
+    return {
+        "ollama_host": benchmark_runner.ollama_host,
+        "models": models,
+        "default_model": os.getenv("OLLAMA_MODEL", "hermes3:3b")
+    }
+
+@app.post("/api/benchmark/run", response_model=List[ModelBenchmarkResult])
+async def run_benchmark(
+    models: Optional[List[str]] = Body(None),
+    suite: str = Query("all", enum=["all", "hallucination", "adversarial"])
+):
+    """Run cybersecurity benchmark on specified models or all discovered Ollama models."""
+    default_m = os.getenv("OLLAMA_MODEL", "hermes3:3b")
+    target_models = models or benchmark_runner.discover_ollama_models() or [default_m]
+
+    results = []
+    for model in target_models:
+        res = await benchmark_runner.run_benchmark_for_model(model=model, suite_name=suite)
+        results.append(res)
+    return results
 
 @app.get("/api/report", response_model=BatchReport)
 async def get_report():

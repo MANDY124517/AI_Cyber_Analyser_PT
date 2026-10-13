@@ -6,6 +6,8 @@ from datetime import datetime
 
 from models import SecurityFinding, FindingAnalysis, EnrichedFinding, BatchReport, BatchReportMetrics
 from pipeline.ai_engine import CybersecurityAIEngine
+from schema.grounded_response_schema import GroundedAIResponse
+from schema.normalizer import SecurityEngineNormalizer
 
 
 class FindingsPipelineRunner:
@@ -26,10 +28,23 @@ class FindingsPipelineRunner:
         self.cached_findings = [SecurityFinding.model_validate(item) for item in raw_data]
         return self.cached_findings
 
-    async def analyze_single(self, finding: SecurityFinding) -> EnrichedFinding:
+    async def analyze_single(self, finding: SecurityFinding, target_model: Optional[str] = None) -> EnrichedFinding:
         """Run AI processing on a single finding."""
-        analysis = await self.engine.analyze_finding(finding)
+        analysis = await self.engine.analyze_finding(finding, target_model=target_model)
         return EnrichedFinding(finding=finding, analysis=analysis)
+
+    async def analyze_grounded(
+        self,
+        finding: SecurityFinding,
+        target_model: Optional[str] = None,
+        enable_guardian: Optional[bool] = None
+    ) -> GroundedAIResponse:
+        """Run AI processing on a single finding with full deterministic grounding evaluation & Granite Guardian audit."""
+        return await self.engine.analyze_grounded(
+            finding,
+            target_model=target_model,
+            enable_guardian=enable_guardian
+        )
 
     async def run_batch(self, findings: Optional[List[SecurityFinding]] = None, max_concurrency: Optional[int] = None) -> BatchReport:
         """Run full AI analysis pipeline over findings and compute aggregate report."""
