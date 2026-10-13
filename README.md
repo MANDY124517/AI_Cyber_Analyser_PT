@@ -5,7 +5,7 @@
 
 > [!NOTE]
 > **Prototype Demonstration & Production Blueprint**:  
-> This repository is a functional demonstration and architectural proof-of-concept. 
+> This repository is a functional demonstration and architectural proof-of-concept.
 
 ---
 
