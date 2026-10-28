@@ -1,13 +1,27 @@
 import json
 import os
+import sys
 import asyncio
 from typing import List, Dict, Any, Optional
 from datetime import datetime
+
+# Ensure repository root and parent workspace root are in sys.path to access ai_advisory
+repo_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+workspace_root = os.path.abspath(os.path.join(repo_root, ".."))
+for p in [repo_root, workspace_root]:
+    if p not in sys.path:
+        sys.path.insert(0, p)
 
 from models import SecurityFinding, FindingAnalysis, EnrichedFinding, BatchReport, BatchReportMetrics
 from pipeline.ai_engine import CybersecurityAIEngine
 from schema.grounded_response_schema import GroundedAIResponse
 from schema.normalizer import SecurityEngineNormalizer
+
+# Phase 2 Threat Intelligence & Prioritization Integration
+from ai_advisory.threat_intel.intel_aggregator import ThreatIntelAggregator
+from ai_advisory.prioritization.matrix import PrioritizationEngine
+from ai_advisory.narrative.generator import NarrativeGenerator
+from ai_advisory.models import AssetContext, ThreatIntelData, PrioritizationResult
 
 
 class FindingsPipelineRunner:
@@ -16,8 +30,39 @@ class FindingsPipelineRunner:
     def __init__(self, data_path: str = "data/findings.json", provider: Optional[str] = None):
         self.data_path = data_path
         self.engine = CybersecurityAIEngine(provider=provider)
+        self.advisory_intel = ThreatIntelAggregator()
+        self.advisory_prioritization = PrioritizationEngine()
+        self.advisory_narrative = NarrativeGenerator()
         self.cached_findings: List[SecurityFinding] = []
         self.enriched_results: List[EnrichedFinding] = []
+
+    def enrich_threat_intel(self, finding: SecurityFinding) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        """Compute real-world threat intel (EPSS/KEV) and deterministic priority."""
+        intel = self.advisory_intel.get_intel_for_cve(finding.cve_id)
+        
+        env = getattr(finding.metadata, "environment", "production").lower() if finding.metadata else "production"
+        tags = [t.lower() for t in (getattr(finding.metadata, "tags", []) or [])]
+        is_internet = True
+        if "internal" in finding.asset.lower() or "internal" in tags:
+            is_internet = False
+        elif any(d in finding.asset.lower() for d in [".internal", ".corp", ".local"]):
+            is_internet = False
+
+        asset_ctx = AssetContext(
+            asset_id=finding.asset,
+            environment=env if env in ["production", "staging", "development"] else "production",
+            internet_facing=is_internet,
+            business_criticality="CRITICAL" if "critical-infrastructure" in tags else "HIGH",
+            data_classification="RESTRICTED_PII" if ("pii-leak" in tags or "gdpr-risk" in tags) else "CONFIDENTIAL"
+        )
+        prio = self.advisory_prioritization.calculate_priority(
+            cvss_score=finding.cvss_score,
+            severity=finding.severity,
+            threat_intel=intel,
+            asset_context=asset_ctx,
+            evidence=finding.evidence
+        )
+        return intel.model_dump(mode="json"), prio.model_dump(mode="json")
 
     def load_findings(self) -> List[SecurityFinding]:
         """Load raw findings from disk."""
@@ -29,9 +74,77 @@ class FindingsPipelineRunner:
         return self.cached_findings
 
     async def analyze_single(self, finding: SecurityFinding, target_model: Optional[str] = None) -> EnrichedFinding:
-        """Run AI processing on a single finding."""
+        """Run AI processing on a single finding with deterministic threat intel & risk prioritization."""
+        intel_dict, prio_dict = self.enrich_threat_intel(finding)
         analysis = await self.engine.analyze_finding(finding, target_model=target_model)
-        return EnrichedFinding(finding=finding, analysis=analysis)
+
+        # Enforce deterministic priority from Phase 2 Threat Intel
+        prio_tier = prio_dict.get("priority_tier", "P1 - High Priority Patch")
+        if "P0" in prio_tier:
+            analysis.suggested_priority = "P0 - Critical"
+        elif "P1" in prio_tier:
+            analysis.suggested_priority = "P1 - High"
+        elif "P2" in prio_tier:
+            analysis.suggested_priority = "P2 - Medium"
+        else:
+            analysis.suggested_priority = "P3 - Low"
+
+        # Populate threat intelligence metrics into analysis
+        analysis.epss_score = intel_dict.get("epss_score")
+        analysis.epss_percentile = intel_dict.get("epss_percentile")
+        analysis.cisa_kev_listed = intel_dict.get("cisa_kev_listed", False)
+        analysis.ssvc_decision = prio_dict.get("ssvc_decision")
+        analysis.composite_risk_score = prio_dict.get("composite_risk_score")
+        analysis.remediation_sla_hours = prio_dict.get("remediation_sla_hours")
+        analysis.prioritization_rationale = prio_dict.get("decision_rationale")
+
+        # Ensure executive summary is executive-grade and does not leak raw code/telemetry
+        exec_text = analysis.executive_summary or ""
+        is_corrupted = (
+            not exec_text
+            or "Security analysis generated:" in exec_text
+            or "Automated security triage identified vulnerability" in exec_text
+            or any(t in exec_text for t in ["public ", "class ", "def ", "function ", "import ", "Invoice ", "return "])
+        )
+        if is_corrupted:
+            intel_obj = ThreatIntelData.model_validate(intel_dict)
+            env = getattr(finding.metadata, "environment", "production").lower() if finding.metadata else "production"
+            tags = [t.lower() for t in (getattr(finding.metadata, "tags", []) or [])]
+            is_internet = True
+            if "internal" in finding.asset.lower() or "internal" in tags:
+                is_internet = False
+            elif any(d in finding.asset.lower() for d in [".internal", ".corp", ".local"]):
+                is_internet = False
+
+            asset_ctx = AssetContext(
+                asset_id=finding.asset,
+                environment=env if env in ["production", "staging", "development"] else "production",
+                internet_facing=is_internet,
+                business_criticality="CRITICAL" if "critical-infrastructure" in tags else "HIGH",
+                data_classification="RESTRICTED_PII" if ("pii-leak" in tags or "gdpr-risk" in tags) else "CONFIDENTIAL"
+            )
+            prio_obj = PrioritizationResult.model_validate(prio_dict)
+            narrative = self.advisory_narrative.generate(
+                finding_title=finding.title,
+                category=finding.category,
+                severity=finding.severity,
+                cve_id=finding.cve_id,
+                cvss_score=finding.cvss_score,
+                asset=finding.asset,
+                threat_intel=intel_obj,
+                asset_context=asset_ctx,
+                prioritization=prio_obj
+            )
+            analysis.executive_summary = narrative.executive_summary
+            if "Operational risk, potential compliance" in (analysis.impact.business_impact or ""):
+                analysis.impact.business_impact = narrative.business_impact
+
+        return EnrichedFinding(
+            finding=finding,
+            analysis=analysis,
+            threat_intel=intel_dict,
+            prioritization=prio_dict
+        )
 
     async def analyze_grounded(
         self,

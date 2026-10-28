@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CyberTriage | Enterprise Security Finding Triage & Remediation Console</title>
     <meta name="description" content="Operational AI-assisted security finding triage, root cause analysis, and automated remediation console for cybersecurity analysts and engineering teams.">
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles.css?v=2.3.2">
 </head>
 <body>
     <div class="app-shell">
@@ -196,6 +196,9 @@
                                 <span class="badge badge-info" id="insp-badge-cat">CVE</span>
                                 <span class="badge badge-cve" id="insp-badge-cve" style="display: none;">CVE-2021-44228</span>
                                 <span class="badge badge-cvss" id="insp-badge-cvss" style="display: none;">CVSS 10.0</span>
+                                <span class="badge badge-epss" id="insp-badge-epss" style="display: none;">EPSS 100%</span>
+                                <span class="badge badge-kev" id="insp-badge-kev" style="display: none;">🚨 CISA KEV</span>
+                                <span class="badge badge-ssvc" id="insp-badge-ssvc" style="display: none;">SSVC: ACT</span>
                                 <span class="status-indicator-tag status-pending" id="insp-status-tag">Analysis Pending</span>
                             </div>
                             <h1 class="inspector-title" id="insp-title">Finding Title</h1>
@@ -279,12 +282,30 @@
                             </div>
 
                             <div class="section-card">
-                                <span class="section-header-title">Operational Triage Matrix</span>
+                                <span class="section-header-title">Operational Triage & Risk Matrix</span>
                                 <div class="three-col-grid">
                                     <div class="key-value-list">
                                         <div class="kv-item">
                                             <span class="kv-key">Assigned Priority</span>
                                             <span class="kv-val" id="insp-priority">Pending</span>
+                                        </div>
+                                    </div>
+                                    <div class="key-value-list">
+                                        <div class="kv-item">
+                                            <span class="kv-key">Remediation SLA</span>
+                                            <span class="kv-val" id="insp-sla" style="color: #60a5fa; font-weight: 700;">Pending</span>
+                                        </div>
+                                    </div>
+                                    <div class="key-value-list">
+                                        <div class="kv-item">
+                                            <span class="kv-key">SSVC Decision</span>
+                                            <span class="kv-val" id="insp-ssvc-val" style="color: #f59e0b; font-weight: 700;">Pending</span>
+                                        </div>
+                                    </div>
+                                    <div class="key-value-list">
+                                        <div class="kv-item">
+                                            <span class="kv-key">Composite Risk</span>
+                                            <span class="kv-val" id="insp-composite-score" style="color: #ef4444; font-weight: 700;">Pending</span>
                                         </div>
                                     </div>
                                     <div class="key-value-list">
@@ -299,6 +320,12 @@
                                             <span class="kv-val" id="insp-confidence-pill">Pending</span>
                                         </div>
                                     </div>
+                                </div>
+                                <div class="subcard" style="margin-top: 15px; border-left: 3px solid #6366f1;">
+                                    <span class="subcard-label" style="color: #818cf8;">
+                                        Threat Intelligence & Prioritization Rationale
+                                    </span>
+                                    <p class="subcard-body" id="insp-prio-rationale" style="font-size: 0.85rem; color: #cbd5e1; line-height: 1.5;">Deterministic SSVC & live EPSS/KEV evaluation.</p>
                                 </div>
                             </div>
                         </div>
@@ -684,6 +711,6 @@
     </div>
 
     <!-- Application Javascript Logic -->
-    <script src="app.js"></script>
+    <script src="app.js?v=2.3.2"></script>
 </body>
 </html>

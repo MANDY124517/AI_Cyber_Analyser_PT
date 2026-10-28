@@ -320,7 +320,7 @@ class CybersecurityAIEngine:
 
     async def _analyze_with_ollama(self, finding: SecurityFinding, target_model: Optional[str] = None) -> FindingAnalysis:
         prompt_payload = build_isolated_prompt_payload(finding.model_dump())
-        model_name = target_model or os.getenv("OLLAMA_MODEL", "hermes3:3b")
+        model_name = target_model or os.getenv("OLLAMA_MODEL", "qwen2.5:7b")
 
         options: Dict[str, Any] = {
             "num_ctx": int(os.getenv("OLLAMA_NUM_CTX", "4096")),

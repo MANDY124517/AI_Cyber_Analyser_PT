@@ -156,6 +156,15 @@ class FindingAnalysis(BaseModel):
     mitre_tactics_techniques: List[str] = Field(
         default_factory=list, description="Relevant MITRE ATT&CK techniques (e.g., T1190)"
     )
+    # Phase 2 AI Advisory Threat Intel & Deterministic Prioritization additions:
+    epss_score: Optional[float] = Field(None, description="EPSS 30-day exploit probability (0.0 - 1.0)")
+    epss_percentile: Optional[float] = Field(None, description="EPSS percentile relative to all CVEs")
+    cisa_kev_listed: bool = Field(False, description="Flag indicating confirmed weaponization in CISA KEV catalog")
+    ssvc_decision: Optional[str] = Field(None, description="CISA SSVC decision status (ACT, ATTEND, TRACK_STAR, TRACK)")
+    composite_risk_score: Optional[float] = Field(None, description="Deterministic risk score (0 - 100)")
+    remediation_sla_hours: Optional[int] = Field(None, description="Recommended remediation SLA in hours")
+    prioritization_rationale: Optional[str] = Field(None, description="Audit justification for priority rating")
+
     analyzed_at: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat(),
         description="Analysis completion timestamp"
@@ -249,6 +258,8 @@ class FindingAnalysis(BaseModel):
 class EnrichedFinding(BaseModel):
     finding: SecurityFinding
     analysis: Optional[FindingAnalysis] = None
+    threat_intel: Optional[Dict[str, Any]] = None
+    prioritization: Optional[Dict[str, Any]] = None
 
 
 class BatchReportMetrics(BaseModel):

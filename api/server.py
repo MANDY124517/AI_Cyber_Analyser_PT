@@ -49,13 +49,20 @@ app = FastAPI(
     version="2.0.0"
 )
 
-# Request logging middleware
+# Request logging and no-cache middleware for local development
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
     start_time = time.time()
     response = await call_next(request)
     duration_ms = round((time.time() - start_time) * 1000, 2)
     logger.info(f"{request.client.host if request.client else 'client'} - \"{request.method} {request.url.path}\" {response.status_code} ({duration_ms}ms)")
+    
+    # Invalidate cache for frontend assets in development so changes reflect immediately
+    if request.url.path.endswith((".js", ".css", ".html")) or request.url.path == "/" or request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+        
     return response
 
 # Enable CORS
@@ -79,13 +86,19 @@ state: Dict[str, EnrichedFinding] = {}
 
 
 def _init_default_findings():
-    """Load default findings if state is empty."""
+    """Load default findings if state is empty, pre-enriching with real-world threat intel and deterministic priority."""
     if not state:
         try:
             findings = runner.load_findings()
             for f in findings:
-                state[f.id] = EnrichedFinding(finding=f, analysis=None)
-            logger.info(f"Loaded {len(state)} security findings into active state.")
+                intel_dict, prio_dict = runner.enrich_threat_intel(f)
+                state[f.id] = EnrichedFinding(
+                    finding=f,
+                    analysis=None,
+                    threat_intel=intel_dict,
+                    prioritization=prio_dict
+                )
+            logger.info(f"Loaded {len(state)} security findings into active state with threat intel.")
         except Exception as e:
             logger.warning(f"Could not load default findings: {e}")
 
@@ -97,6 +110,13 @@ _init_default_findings()
 async def startup_event():
     """Load default findings on server startup if state is empty."""
     _init_default_findings()
+
+
+@app.get("/api/threat-intel/{cve_id}")
+async def get_threat_intel_cve(cve_id: str):
+    """Live threat intel lookup for a given CVE ID (FIRST.org EPSS + CISA KEV)."""
+    intel = runner.advisory_intel.get_intel_for_cve(cve_id)
+    return intel.model_dump(mode="json")
 
 
 class CustomFindingRequest(BaseModel):
@@ -208,7 +228,22 @@ async def analyze_grounded(
         target_model=model,
         enable_guardian=guardian
     )
-    state[fid] = EnrichedFinding(finding=state[fid].finding, analysis=grounded_res.analysis)
+    intel_dict, prio_dict = runner.enrich_threat_intel(state[fid].finding)
+    if grounded_res.analysis:
+        grounded_res.analysis.epss_score = intel_dict.get("epss_score")
+        grounded_res.analysis.epss_percentile = intel_dict.get("epss_percentile")
+        grounded_res.analysis.cisa_kev_listed = intel_dict.get("cisa_kev_listed", False)
+        grounded_res.analysis.ssvc_decision = prio_dict.get("ssvc_decision")
+        grounded_res.analysis.composite_risk_score = prio_dict.get("composite_risk_score")
+        grounded_res.analysis.remediation_sla_hours = prio_dict.get("remediation_sla_hours")
+        grounded_res.analysis.prioritization_rationale = prio_dict.get("decision_rationale")
+
+    state[fid] = EnrichedFinding(
+        finding=state[fid].finding,
+        analysis=grounded_res.analysis,
+        threat_intel=intel_dict,
+        prioritization=prio_dict
+    )
     return grounded_res
 
 @app.post("/api/guardian/audit/{finding_id}")
@@ -275,8 +310,34 @@ async def analyze_custom(req: CustomFindingRequest):
         evidence=evidence_dict
     )
     
+    intel_dict, prio_dict = runner.enrich_threat_intel(finding)
     analysis = await runner.engine.analyze_finding(finding)
-    enriched = EnrichedFinding(finding=finding, analysis=analysis)
+
+    # Deterministic priority alignment
+    prio_tier = prio_dict.get("priority_tier", "P1 - High Priority Patch")
+    if "P0" in prio_tier:
+        analysis.suggested_priority = "P0 - Critical"
+    elif "P1" in prio_tier:
+        analysis.suggested_priority = "P1 - High"
+    elif "P2" in prio_tier:
+        analysis.suggested_priority = "P2 - Medium"
+    else:
+        analysis.suggested_priority = "P3 - Low"
+
+    analysis.epss_score = intel_dict.get("epss_score")
+    analysis.epss_percentile = intel_dict.get("epss_percentile")
+    analysis.cisa_kev_listed = intel_dict.get("cisa_kev_listed", False)
+    analysis.ssvc_decision = prio_dict.get("ssvc_decision")
+    analysis.composite_risk_score = prio_dict.get("composite_risk_score")
+    analysis.remediation_sla_hours = prio_dict.get("remediation_sla_hours")
+    analysis.prioritization_rationale = prio_dict.get("decision_rationale")
+
+    enriched = EnrichedFinding(
+        finding=finding,
+        analysis=analysis,
+        threat_intel=intel_dict,
+        prioritization=prio_dict
+    )
     state[custom_id] = enriched
     return enriched
 

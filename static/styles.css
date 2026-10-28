@@ -641,6 +641,33 @@ html, body {
     font-family: var(--font-mono);
 }
 
+.badge-epss {
+    color: #fdba74;
+    background: #2a1b0c;
+    border-color: #7c2d12;
+    font-family: var(--font-mono);
+}
+
+.badge-kev {
+    color: #fca5a5;
+    background: #3f1212;
+    border-color: #991b1b;
+    font-family: var(--font-mono);
+    animation: kevPulse 2s infinite ease-in-out;
+}
+
+@keyframes kevPulse {
+    0%, 100% { border-color: #991b1b; }
+    50% { border-color: #ef4444; box-shadow: 0 0 8px rgba(239, 68, 68, 0.4); }
+}
+
+.badge-ssvc {
+    color: #93c5fd;
+    background: #0f1d38;
+    border-color: #1e3a8a;
+    font-family: var(--font-mono);
+}
+
 .status-indicator-tag {
     display: inline-flex;
     align-items: center;

